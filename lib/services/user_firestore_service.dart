@@ -30,6 +30,9 @@ class FirestoreUserProfile {
 }
 
 /// Saves Kakao account fields to Firestore `users/{uid}`.
+///
+/// Does not overwrite [nickname] — that is reserved for the app nickname
+/// claimed via [NicknameService].
 Future<void> saveUserToFirestore({
   required String uid,
   required String nickname,
@@ -40,7 +43,7 @@ Future<void> saveUserToFirestore({
 
   try {
     await firestore.collection('users').doc(uid).set({
-      'nickname': nickname,
+      'kakaoNickname': nickname,
       'profileImage': profileImage,
       'email': email,
       'createdAt': FieldValue.serverTimestamp(),

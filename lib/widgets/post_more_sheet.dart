@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/post.dart';
 import '../services/post_service.dart';
+import '../services/posts_firestore_service.dart';
 import 'topic_picker_sheet.dart';
 import 'report_bottom_sheet.dart';
 import '../screens/write_post_screen.dart';
@@ -14,6 +15,7 @@ class PostMoreSheet {
     required Post post,
   }) async {
     final service = PostService.instance;
+    final postsFs = PostsFirestoreService.instance;
     final mine = service.isMyPost(post.id);
     final colors = Theme.of(context).colorScheme;
 
@@ -85,18 +87,27 @@ class PostMoreSheet {
                       showClearOption: true,
                     );
                     if (selected == null || !context.mounted) return;
-                    final ok = service.updatePostTopic(
-                      post.id,
-                      selected.isEmpty ? null : selected,
-                    );
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          ok ? '주제를 수정했어요.' : '주제를 수정할 수 없어요.',
-                        ),
-                      ),
-                    );
+                    try {
+                      final updated = await postsFs.updatePostTopic(
+                        postId: post.id,
+                        topicName: selected.isEmpty ? null : selected,
+                      );
+                      service.upsertRemotePost(updated);
+                      service.updatePostTopic(
+                        post.id,
+                        selected.isEmpty ? null : selected,
+                      );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('주제를 수정했어요.')),
+                      );
+                    } catch (e) {
+                      debugPrint('주제 수정 실패: $e');
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('주제를 수정할 수 없어요.')),
+                      );
+                    }
                   },
                 ),
               ListTile(
@@ -135,16 +146,24 @@ class PostMoreSheet {
                       color: colors.error,
                     ),
                   ),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(sheetContext);
-                    final ok = service.deletePost(post.id);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(ok ? '글을 삭제했어요.' : '글을 삭제할 수 없어요.'),
-                      ),
-                    );
-                    if (ok && Navigator.of(context).canPop()) {
-                      // If opened from detail of deleted post, leave detail.
+                    try {
+                      await postsFs.deletePost(post.id);
+                      service.deletePost(post.id);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('글을 삭제했어요.')),
+                      );
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                    } catch (e) {
+                      debugPrint('글 삭제 실패: $e');
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('글을 삭제할 수 없어요.')),
+                      );
                     }
                   },
                 ),

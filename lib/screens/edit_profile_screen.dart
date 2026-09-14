@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/auth_service.dart';
 import '../core/nickname_validator.dart';
+import '../services/auth_service.dart';
+import '../services/nickname_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
 
@@ -27,7 +28,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final NoUnderlineTextEditingController _nicknameController;
   late String _cafeType;
   late String _selectedExperience;
+  late final String _originalNickname;
   String? _nicknameErrorText;
+  bool _submitting = false;
 
   static const List<String> _experienceOptions = [
     '1개월 미만',
@@ -42,6 +45,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void initState() {
     super.initState();
     final auth = AuthService.instance;
+    _originalNickname =
+        (widget.currentNickname ?? auth.nickname ?? '').trim();
     _nicknameController = NoUnderlineTextEditingController(
       text: widget.currentNickname ?? auth.nickname ?? '',
     );
@@ -56,18 +61,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  bool _validateNickname(String nickname) {
+  bool _validateNicknameFormat(String nickname) {
     final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
     final error = nicknameValidationError(cleaned);
     setState(() => _nicknameErrorText = error);
     return error == null;
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_submitting) return;
+
     final sanitizedNickname =
         _nicknameController.text.replaceAll(RegExp(r'\s+'), '').trim();
 
-    if (!_validateNickname(sanitizedNickname)) {
+    if (!_validateNicknameFormat(sanitizedNickname)) {
       return;
     }
 
@@ -75,18 +82,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _nicknameController.text = sanitizedNickname;
     }
 
-    AuthService.instance.completeOnboarding(
-      nickname: sanitizedNickname,
-      cafeType: _cafeType,
-      experience: _selectedExperience,
-    );
+    final auth = AuthService.instance;
+    final uid = auth.kakaoUserId;
+    if (uid == null || uid.isEmpty) {
+      setState(() => _nicknameErrorText = '로그인 정보가 없어요. 다시 로그인해 주세요.');
+      return;
+    }
 
-    if (!mounted) return;
-    Navigator.of(context).pop({
-      'nickname': sanitizedNickname,
-      'cafeType': _cafeType,
-      'experience': _selectedExperience,
-    });
+    if (auth.isNicknameUsedLocally(sanitizedNickname, excludeUid: uid)) {
+      setState(() => _nicknameErrorText = '이미 사용 중인 닉네임이에요.');
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      if (sanitizedNickname != normalizeNickname(_originalNickname)) {
+        final taken = await NicknameService.instance.isNicknameTaken(
+          sanitizedNickname,
+          excludeUid: uid,
+        );
+        if (taken) {
+          if (!mounted) return;
+          setState(() {
+            _nicknameErrorText = '이미 사용 중인 닉네임이에요.';
+            _submitting = false;
+          });
+          return;
+        }
+
+        await NicknameService.instance.claimNickname(
+          uid: uid,
+          nickname: sanitizedNickname,
+          previousNickname: _originalNickname,
+        );
+      } else {
+        // Nickname unchanged — still sync profile fields on user doc.
+        await NicknameService.instance.claimNickname(
+          uid: uid,
+          nickname: sanitizedNickname,
+          previousNickname: _originalNickname,
+        );
+      }
+
+      auth.completeOnboarding(
+        nickname: sanitizedNickname,
+        cafeType: _cafeType,
+        experience: _selectedExperience,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop({
+        'nickname': sanitizedNickname,
+        'cafeType': _cafeType,
+        'experience': _selectedExperience,
+      });
+    } on NicknameTakenException {
+      if (!mounted) return;
+      setState(() => _nicknameErrorText = '이미 사용 중인 닉네임이에요.');
+    } catch (e) {
+      debugPrint('닉네임 저장 실패: $e');
+      if (!mounted) return;
+      setState(
+        () => _nicknameErrorText = '닉네임 확인에 실패했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -247,23 +308,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 width: double.infinity,
                 height: 50,
                 child: FilledButton(
-                  onPressed: _save,
+                  onPressed: _submitting ? null : _save,
                   style: FilledButton.styleFrom(
                     backgroundColor: colors.onSurface,
                     foregroundColor: colors.surface,
+                    disabledBackgroundColor: colors.onSurface.withValues(
+                      alpha: 0.4,
+                    ),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    '저장하기',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: _submitting
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: colors.surface,
+                          ),
+                        )
+                      : const Text(
+                          '저장하기',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ],

@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/topic.dart';
-import '../services/post_service.dart';
+import '../services/topics_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import 'no_underline_text_editing_controller.dart';
 
 /// Topic search / create sheet — opened via "!" on write screen.
+///
+/// Selecting a topic only returns its **name**. Topic documents and
+/// `usageCount` are updated when the post is actually submitted.
 class TopicPickerSheet extends StatefulWidget {
   const TopicPickerSheet({
     super.key,
@@ -49,7 +54,13 @@ class TopicPickerSheet extends StatefulWidget {
 
 class _TopicPickerSheetState extends State<TopicPickerSheet> {
   late final TextEditingController _controller;
-  final _postService = PostService.instance;
+  final _topics = TopicsFirestoreService.instance;
+
+  List<Topic> _results = const [];
+  bool _loading = true;
+  String? _error;
+  int _requestId = 0;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -57,33 +68,63 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
     _controller = NoUnderlineTextEditingController(
       text: widget.initialTopic ?? '',
     );
-    _controller.addListener(() => setState(() {}));
+    _controller.addListener(_onQueryChanged);
+    _load();
   }
 
   @override
   void dispose() {
+    _debounce?.cancel();
+    _controller.removeListener(_onQueryChanged);
     _controller.dispose();
     super.dispose();
   }
 
   String get _query => _controller.text.trim();
 
-  List<Topic> get _results {
-    // Empty query → topics ranked by post count (popularity).
-    if (_query.isEmpty) {
-      return _postService.popularTopics(limit: 12);
+  void _onQueryChanged() {
+    setState(() {});
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), _load);
+  }
+
+  Future<void> _load() async {
+    final id = ++_requestId;
+    final q = _query;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final list = q.isEmpty
+          ? await _topics.popularTopics(limit: 10)
+          : await _topics.searchTopics(q, limit: 12);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _results = list;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('주제 목록 로드 실패: $e');
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _error = '주제를 불러오지 못했어요.';
+        _loading = false;
+        _results = const [];
+      });
     }
-    return _postService.searchTopics(_query, limit: 12);
   }
 
   bool get _canCreateNew {
-    final q = _query;
+    final q = normalizeTopicName(_query);
     if (q.isEmpty) return false;
-    return !_results.any((t) => t.name == q);
+    return !_results.any(
+      (t) => topicNameKey(t.name) == topicNameKey(q),
+    );
   }
 
   void _select(String topic) {
-    Navigator.pop(context, topic);
+    Navigator.pop(context, normalizeTopicName(topic));
   }
 
   @override
@@ -148,7 +189,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                     autofocus: true,
                     textInputAction: TextInputAction.search,
                     onSubmitted: (value) {
-                      final q = value.trim();
+                      final q = normalizeTopicName(value);
                       if (q.isNotEmpty) _select(q);
                     },
                     spellCheckConfiguration:
@@ -243,7 +284,32 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        if (results.isEmpty && !_canCreateNew)
+                        if (_loading)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 14,
+                                color: colors.muted,
+                              ),
+                            ),
+                          )
+                        else if (results.isEmpty && !_canCreateNew)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             child: Text(
@@ -264,13 +330,16 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                               for (final topic in results)
                                 _TopicChip(
                                   label: topic.name,
-                                  selected:
-                                      topic.name == widget.initialTopic,
+                                  count: topic.usageCount,
+                                  selected: topicNameKey(topic.name) ==
+                                      topicNameKey(
+                                        widget.initialTopic ?? '',
+                                      ),
                                   onTap: () => _select(topic.name),
                                 ),
                               if (_canCreateNew)
                                 _TopicChip(
-                                  label: '“$_query” 만들기',
+                                  label: '“$_query” 새로운 주제 만들기',
                                   emphasized: true,
                                   onTap: () => _select(_query),
                                 ),
@@ -304,6 +373,7 @@ class _TopicChip extends StatelessWidget {
     this.selected = false,
     this.emphasized = false,
     this.muted = false,
+    this.count,
   });
 
   final String label;
@@ -311,6 +381,7 @@ class _TopicChip extends StatelessWidget {
   final bool selected;
   final bool emphasized;
   final bool muted;
+  final int? count;
 
   @override
   Widget build(BuildContext context) {
@@ -334,6 +405,8 @@ class _TopicChip extends StatelessWidget {
       weight = FontWeight.w500;
     }
 
+    final showCount = count != null && !emphasized && !muted;
+
     return Material(
       color: bg,
       borderRadius: BorderRadius.circular(999),
@@ -343,15 +416,32 @@ class _TopicChip extends StatelessWidget {
         splashFactory: NoSplash.splashFactory,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: weight,
-              letterSpacing: -0.2,
-              color: fg,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: weight,
+                  letterSpacing: -0.2,
+                  color: fg,
+                ),
+              ),
+              if (showCount) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: fg.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

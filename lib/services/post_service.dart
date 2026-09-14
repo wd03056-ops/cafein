@@ -80,6 +80,9 @@ class PostService extends ChangeNotifier {
             post.authorProfileImage ?? local.authorProfileImage,
         authorId: post.authorId ?? local.authorId,
         title: post.title ?? local.title,
+        topicId: post.topicId ?? local.topicId,
+        topicName: post.topicName ?? local.topicName,
+        tags: post.tags.isNotEmpty ? post.tags : local.tags,
       );
     } else {
       _posts.add(post);

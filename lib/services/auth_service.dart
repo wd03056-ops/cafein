@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -143,11 +144,14 @@ class AuthService extends ChangeNotifier {
 
       final kakaoAccount = user.kakaoAccount;
       final kakaoProfile = kakaoAccount?.profile;
-      await saveUserToFirestore(
-        uid: kakaoUserId,
-        nickname: kakaoProfile?.nickname ?? '',
-        profileImage: kakaoProfile?.profileImageUrl ?? '',
-        email: kakaoAccount?.email ?? '',
+      // Don't block first frame on Firestore — sync in background.
+      unawaited(
+        saveUserToFirestore(
+          uid: kakaoUserId,
+          nickname: kakaoProfile?.nickname ?? '',
+          profileImage: kakaoProfile?.profileImageUrl ?? '',
+          email: kakaoAccount?.email ?? '',
+        ),
       );
 
       final needsOnboarding = signInWithKakao(kakaoUserId);
@@ -203,6 +207,17 @@ class AuthService extends ChangeNotifier {
     _cafeType = null;
     _experience = null;
     notifyListeners();
+  }
+
+  /// True if another local Kakao profile already uses [nickname].
+  bool isNicknameUsedLocally(String nickname, {String? excludeUid}) {
+    final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
+    if (cleaned.isEmpty) return false;
+    for (final e in _profilesByKakaoId.entries) {
+      if (excludeUid != null && e.key == excludeUid) continue;
+      if (e.value.nickname == cleaned) return true;
+    }
+    return false;
   }
 
   void completeOnboarding({

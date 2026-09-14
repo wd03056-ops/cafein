@@ -13,9 +13,15 @@ class Post {
   Poll? poll;
   List<Comment> comments;
 
-  /// Related post links (mock / future server tags)
+  /// Legacy / display tag list. Prefer [topicId] + [topicName].
   final List<String> tags;
   final List<String> relatedPostIds;
+
+  /// Firestore `topics/{id}` reference.
+  final String? topicId;
+
+  /// Denormalized topic display name for feed/detail.
+  final String? topicName;
 
   /// Author work experience label from onboarding (e.g. '1~3년')
   final String? experience;
@@ -46,6 +52,8 @@ class Post {
     List<Comment>? comments,
     this.tags = const [],
     this.relatedPostIds = const [],
+    this.topicId,
+    this.topicName,
     String? experience,
     String? cafeType,
     this.title,
@@ -59,8 +67,13 @@ class Post {
 
   int get commentCount => remoteCommentCount ?? comments.length;
 
-  /// Selected topic shown in list/detail (first tag)
-  String? get topic => tags.isEmpty ? null : tags.first;
+  /// Display topic: denormalized name, else first legacy tag.
+  String? get topic {
+    final named = topicName?.trim();
+    if (named != null && named.isNotEmpty) return named;
+    if (tags.isEmpty) return null;
+    return tags.first;
+  }
 
   /// Nickname alias used by Firestore field naming.
   String get authorNickname => author;
@@ -78,7 +91,12 @@ class Post {
     final profileImage = (data['authorProfileImage'] as String?)?.trim() ??
         (data['profileImage'] as String?)?.trim();
     final authorId = (data['authorId'] as String?)?.trim();
-    final tags = _parseStringList(data['tags'] ?? data['topics']);
+    final topicId = (data['topicId'] as String?)?.trim();
+    final topicName = (data['topicName'] as String?)?.trim();
+    var tags = _parseStringList(data['tags'] ?? data['topics']);
+    if (tags.isEmpty && topicName != null && topicName.isNotEmpty) {
+      tags = [topicName];
+    }
     final likeCount = _parseInt(data['likeCount'] ?? data['likes']) ?? 0;
     final commentCount = _parseInt(data['commentCount']) ?? 0;
     final experience = (data['experience'] as String?)?.trim();
@@ -94,6 +112,8 @@ class Post {
       authorId: authorId,
       likeCount: likeCount,
       tags: tags,
+      topicId: topicId,
+      topicName: topicName,
       experience: experience,
       cafeType: cafeType,
       remoteCommentCount: commentCount,
@@ -112,6 +132,9 @@ class Post {
     List<Comment>? comments,
     List<String>? tags,
     List<String>? relatedPostIds,
+    String? topicId,
+    String? topicName,
+    bool clearTopic = false,
     String? experience,
     String? cafeType,
     String? title,
@@ -128,8 +151,10 @@ class Post {
       likedByMe: likedByMe ?? this.likedByMe,
       poll: clearPoll ? null : (poll ?? this.poll),
       comments: comments ?? this.comments,
-      tags: tags ?? this.tags,
+      tags: clearTopic ? const [] : (tags ?? this.tags),
       relatedPostIds: relatedPostIds ?? this.relatedPostIds,
+      topicId: clearTopic ? null : (topicId ?? this.topicId),
+      topicName: clearTopic ? null : (topicName ?? this.topicName),
       experience: experience ?? this.experience,
       cafeType: cafeType ?? this.cafeType,
       title: title ?? this.title,
@@ -145,7 +170,6 @@ class Post {
     if (value is int) {
       return DateTime.fromMillisecondsSinceEpoch(value);
     }
-    // cloud_firestore Timestamp
     try {
       return (value as dynamic).toDate() as DateTime;
     } catch (_) {}

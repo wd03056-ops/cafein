@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
 
 import 'core/constants.dart';
-import 'screens/auth_gate_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/main_shell.dart';
+import 'screens/onboarding_screen.dart';
+import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
 
 class CafeinApp extends StatelessWidget {
-  const CafeinApp({super.key});
+  const CafeinApp({
+    super.key,
+    required this.initialSession,
+  });
+
+  final KakaoSessionStatus initialSession;
+
+  Widget get _home {
+    return switch (initialSession) {
+      KakaoSessionStatus.authenticated => const MainShell(),
+      KakaoSessionStatus.needsOnboarding => const OnboardingScreen(),
+      KakaoSessionStatus.none => const LoginScreen(),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +33,7 @@ class CafeinApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       locale: const Locale('ko'),
       scrollBehavior: const _NoOverscrollBehavior(),
-      home: const AuthGateScreen(),
+      home: _home,
     );
   }
 }

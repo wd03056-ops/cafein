@@ -131,7 +131,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       onTopicTap: (topic) {
                         Navigator.of(context).push(
                           MaterialPageRoute<void>(
-                            builder: (_) => TopicFeedScreen(topicName: topic),
+                            builder: (_) => TopicFeedScreen(
+                              topicName: topic,
+                              topicId: post.topicId,
+                            ),
                           ),
                         );
                       },

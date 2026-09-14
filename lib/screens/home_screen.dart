@@ -58,10 +58,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openTopic(String topic) {
+  void _openTopic(String topic, {String? topicId}) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => TopicFeedScreen(topicName: topic),
+        builder: (_) => TopicFeedScreen(
+          topicName: topic,
+          topicId: topicId,
+        ),
       ),
     );
   }
@@ -205,7 +208,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       }
                     : null,
-                onTopicTap: _openTopic,
+                onTopicTap: (topic) =>
+                    _openTopic(topic, topicId: post.topicId),
                 onVote: (optionId) {
                   _postService.upsertRemotePost(post);
                   _postService.vote(post.id, optionId);

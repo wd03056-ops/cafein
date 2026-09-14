@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 
 import '../models/post.dart';
+import '../models/topic.dart';
 import '../services/post_service.dart';
+import '../services/posts_firestore_service.dart';
+import '../services/topics_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/post_list_item.dart';
 import 'post_detail_screen.dart';
 
-/// Posts gathered under a user-created topic.
+/// Posts gathered under a topic (Firestore `topicId`).
 class TopicFeedScreen extends StatefulWidget {
-  const TopicFeedScreen({super.key, required this.topicName});
+  const TopicFeedScreen({
+    super.key,
+    required this.topicName,
+    this.topicId,
+  });
 
   final String topicName;
+  final String? topicId;
 
   @override
   State<TopicFeedScreen> createState() => _TopicFeedScreenState();
@@ -19,29 +27,95 @@ class TopicFeedScreen extends StatefulWidget {
 
 class _TopicFeedScreenState extends State<TopicFeedScreen> {
   final _postService = PostService.instance;
-  PostSort _sort = PostSort.popular;
+  final _postsFs = PostsFirestoreService.instance;
+  final _topicsFs = TopicsFirestoreService.instance;
+
+  PostSort _sort = PostSort.latest;
+  bool _loading = true;
+  String? _error;
+  String? _resolvedTopicId;
+  int _usageCount = 0;
+  List<Post> _posts = const [];
 
   @override
   void initState() {
     super.initState();
-    _postService.addListener(_onChanged);
+    _load();
   }
 
-  void _onChanged() {
-    if (mounted) setState(() {});
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      var topicId = widget.topicId?.trim();
+      Topic? topic;
+
+      if (topicId != null && topicId.isNotEmpty) {
+        topic = await _topicsFs.getById(topicId);
+      }
+
+      topic ??= await _topicsFs.findByName(widget.topicName);
+      topicId = topic?.id;
+
+      final posts = topicId == null || topicId.isEmpty
+          ? const <Post>[]
+          : await _postsFs.fetchPostsByTopicId(topicId);
+
+      if (!mounted) return;
+      setState(() {
+        _resolvedTopicId = topicId;
+        _usageCount = topic?.usageCount ?? posts.length;
+        _posts = posts;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('주제 피드 로드 실패: $e');
+      if (!mounted) return;
+      setState(() {
+        _error = '주제 글을 불러오지 못했어요.';
+        _loading = false;
+      });
+    }
   }
 
-  @override
-  void dispose() {
-    _postService.removeListener(_onChanged);
-    super.dispose();
+  List<Post> get _sortedPosts {
+    final list = List<Post>.from(_posts);
+    switch (_sort) {
+      case PostSort.popular:
+        list.sort((a, b) {
+          final byLikes = b.likeCount.compareTo(a.likeCount);
+          if (byLikes != 0) return byLikes;
+          return b.createdAt.compareTo(a.createdAt);
+        });
+      case PostSort.all:
+      case PostSort.latest:
+        list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+    return list;
+  }
+
+  void _openTopic(String topic, {String? topicId}) {
+    if (topic == widget.topicName &&
+        (topicId == null || topicId == _resolvedTopicId)) {
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TopicFeedScreen(
+          topicName: topic,
+          topicId: topicId,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final posts = _postService.postsByTopic(widget.topicName, sort: _sort);
-    final count = _postService.postCountForTopic(widget.topicName);
+    final posts = _sortedPosts;
     final colors = Theme.of(context).colorScheme;
+    final countLabel = _usageCount > 0 ? _usageCount : posts.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -58,7 +132,7 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
               12,
             ),
             child: Text(
-              '$count개의 이야기',
+              '게시글 $countLabel개',
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 13,
@@ -77,66 +151,82 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
             child: Row(
               children: [
                 _SortChip(
-                  label: '인기',
-                  selected: _sort == PostSort.popular,
-                  onTap: () => setState(() => _sort = PostSort.popular),
-                ),
-                const SizedBox(width: 16),
-                _SortChip(
                   label: '최신',
                   selected: _sort == PostSort.latest,
                   onTap: () => setState(() => _sort = PostSort.latest),
+                ),
+                const SizedBox(width: 16),
+                _SortChip(
+                  label: '인기',
+                  selected: _sort == PostSort.popular,
+                  onTap: () => setState(() => _sort = PostSort.popular),
                 ),
               ],
             ),
           ),
           const Divider(height: 0.5, thickness: 0.5),
           Expanded(
-            child: posts.isEmpty
-                ? Center(
-                    child: Text(
-                      '아직 이 주제의 이야기가 없어요.',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 14,
-                        color: colors.muted,
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.only(top: 8),
-                    itemCount: posts.length,
-                    separatorBuilder: (_, _) => const Divider(
-                      height: 0.5,
-                      thickness: 0.5,
-                      indent: AppSpacing.screenH,
-                      endIndent: AppSpacing.screenH,
-                    ),
-                    itemBuilder: (context, index) {
-                      final post = posts[index];
-                      return PostListItem(
-                        post: post,
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => PostDetailScreen(post: post),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Text(
+                          _error!,
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 14,
+                            color: colors.muted,
+                          ),
+                        ),
+                      )
+                    : posts.isEmpty
+                        ? Center(
+                            child: Text(
+                              '아직 이 주제의 이야기가 없어요.',
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 14,
+                                color: colors.muted,
+                              ),
                             ),
-                          );
-                        },
-                        onLike: () => _postService.toggleLike(post.id),
-                        onTopicTap: (topic) {
-                          if (topic == widget.topicName) return;
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => TopicFeedScreen(topicName: topic),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.only(top: 8),
+                            itemCount: posts.length,
+                            separatorBuilder: (_, _) => const Divider(
+                              height: 0.5,
+                              thickness: 0.5,
+                              indent: AppSpacing.screenH,
+                              endIndent: AppSpacing.screenH,
                             ),
-                          );
-                        },
-                        onVote: (optionId) =>
-                            _postService.vote(post.id, optionId),
-                      );
-                    },
-                  ),
+                            itemBuilder: (context, index) {
+                              final post = posts[index];
+                              return PostListItem(
+                                post: post,
+                                onTap: () {
+                                  _postService.upsertRemotePost(post);
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          PostDetailScreen(post: post),
+                                    ),
+                                  );
+                                },
+                                onLike: () {
+                                  _postService.upsertRemotePost(post);
+                                  _postService.toggleLike(post.id);
+                                },
+                                onTopicTap: (topic) => _openTopic(
+                                  topic,
+                                  topicId: post.topicId,
+                                ),
+                                onVote: (optionId) {
+                                  _postService.upsertRemotePost(post);
+                                  _postService.vote(post.id, optionId);
+                                },
+                              );
+                            },
+                          ),
           ),
         ],
       ),

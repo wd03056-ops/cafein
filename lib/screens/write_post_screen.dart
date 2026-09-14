@@ -644,26 +644,42 @@ class _WritePostScreenState extends State<WritePostScreen> {
     setState(() => _submitting = true);
 
     if (_isEditing) {
-      final ok = PostService.instance.updatePost(
-        postId: widget.editPostId!,
-        content: content,
-        tags: _selectedTopic == null ? const [] : [_selectedTopic!],
-        poll: poll,
-        clearPoll: !_showPoll,
-      );
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      if (!ok) {
+      try {
+        final updated = await PostsFirestoreService.instance.updatePost(
+          postId: widget.editPostId!,
+          content: content,
+          topicName: _selectedTopic,
+          clearTopic: _selectedTopic == null,
+        );
+        final withPoll = updated.copyWith(
+          poll: poll,
+          clearPoll: !_showPoll,
+        );
+        PostService.instance.upsertRemotePost(withPoll);
+        // Keep local service in sync for owner checks.
+        PostService.instance.updatePost(
+          postId: widget.editPostId!,
+          content: content,
+          tags: _selectedTopic == null ? const [] : [_selectedTopic!],
+          poll: poll,
+          clearPoll: !_showPoll,
+        );
+        if (!mounted) return;
+        setState(() => _submitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('글을 수정했어요.')),
+        );
+        Navigator.of(context).pop(true);
+        return;
+      } catch (e) {
+        debugPrint('Firestore 글 수정 실패: $e');
+        if (!mounted) return;
+        setState(() => _submitting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('글을 수정할 수 없어요.')),
         );
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('글을 수정했어요.')),
-      );
-      Navigator.of(context).pop(true);
-      return;
     }
 
     final authorId = AuthService.instance.kakaoUserId;
@@ -675,7 +691,7 @@ class _WritePostScreenState extends State<WritePostScreen> {
           authorNickname: _nickname,
           experience: AuthService.instance.experience,
           cafeType: AuthService.instance.cafeType,
-          tags: _selectedTopic == null ? const [] : [_selectedTopic!],
+          topicName: _selectedTopic,
         );
         final withPoll = remote.copyWith(poll: poll);
         PostService.instance.markAsMyPost(withPoll.id);

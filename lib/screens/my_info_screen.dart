@@ -127,7 +127,6 @@ class MyInfoScreen extends StatelessWidget {
                       ? remote!.nickname.trim()
                       : '카페인');
               final email = remote?.email.trim() ?? '';
-              final profileImage = remote?.profileImage.trim() ?? '';
               final profileLine = [
                 if (auth.cafeType != null && auth.cafeType!.isNotEmpty)
                   auth.cafeType!,
@@ -148,7 +147,6 @@ class MyInfoScreen extends StatelessWidget {
                   _ProfileHeader(
                     nickname: nickname,
                     email: email,
-                    profileImageUrl: profileImage,
                     subtitle: profileLine.isEmpty
                         ? '카페 종사자 커뮤니티'
                         : profileLine,
@@ -223,7 +221,6 @@ class _LoggedOutBody extends StatelessWidget {
         _ProfileHeader(
           nickname: '카페인',
           email: '',
-          profileImageUrl: '',
           subtitle: '둘러보기 중 · 글쓰기는 로그인 후 가능해요',
         ),
         const SizedBox(height: 28),
@@ -258,78 +255,51 @@ class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.nickname,
     required this.email,
-    required this.profileImageUrl,
     required this.subtitle,
   });
 
   final String nickname;
   final String email;
-  final String profileImageUrl;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final hasImage = profileImageUrl.isNotEmpty;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        CircleAvatar(
-          radius: 36,
-          backgroundColor: colors.fill,
-          backgroundImage: hasImage ? NetworkImage(profileImageUrl) : null,
-          child: hasImage
-              ? null
-              : Text(
-                  nickname.isNotEmpty ? nickname.characters.first : '?',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: colors.onSurface,
-                  ),
-                ),
+        Text(
+          nickname,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.4,
+            height: 1.25,
+            color: colors.onSurface,
+          ),
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                nickname,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                  height: 1.25,
-                  color: colors.onSurface,
-                ),
-              ),
-              if (email.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  email,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: colors.muted,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
-                  color: colors.muted,
-                ),
-              ),
-            ],
+        if (email.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            email,
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 13,
+              fontWeight: FontWeight.w400,
+              color: colors.muted,
+            ),
+          ),
+        ],
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+            color: colors.muted,
           ),
         ),
       ],

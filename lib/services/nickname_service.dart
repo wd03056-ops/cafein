@@ -1,0 +1,121 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+
+/// Thrown when another user already owns the nickname.
+class NicknameTakenException implements Exception {
+  @override
+  String toString() => 'NicknameTakenException';
+}
+
+String normalizeNickname(String nickname) =>
+    nickname.replaceAll(RegExp(r'\s+'), '').trim();
+
+/// Nickname uniqueness helpers backed by Firestore.
+///
+/// Uses `nicknames/{nickname}` as a unique index and keeps `users/{uid}.nickname`
+/// in sync.
+class NicknameService {
+  NicknameService._();
+  static final NicknameService instance = NicknameService._();
+
+  final _firestore = FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> get _nicknames =>
+      _firestore.collection('nicknames');
+
+  CollectionReference<Map<String, dynamic>> get _users =>
+      _firestore.collection('users');
+
+  /// Returns true if [nickname] is already taken by someone else.
+  Future<bool> isNicknameTaken(
+    String nickname, {
+    String? excludeUid,
+  }) async {
+    final cleaned = normalizeNickname(nickname);
+    if (cleaned.isEmpty) return false;
+
+    try {
+      final nickDoc = await _nicknames.doc(cleaned).get();
+      if (nickDoc.exists) {
+        final owner = (nickDoc.data()?['uid'] as String?)?.trim();
+        if (owner == null || owner.isEmpty) return true;
+        if (excludeUid != null && owner == excludeUid) return false;
+        return true;
+      }
+
+      // Fallback for older users docs without nicknames index.
+      final users = await _users
+          .where('nickname', isEqualTo: cleaned)
+          .limit(2)
+          .get();
+      for (final doc in users.docs) {
+        if (excludeUid != null && doc.id == excludeUid) continue;
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('닉네임 중복 조회 실패: $e');
+      rethrow;
+    }
+  }
+
+  /// Claim [nickname] for [uid]. Releases [previousNickname] if owned by [uid].
+  Future<void> claimNickname({
+    required String uid,
+    required String nickname,
+    String? previousNickname,
+  }) async {
+    final cleaned = normalizeNickname(nickname);
+    if (cleaned.isEmpty) {
+      throw ArgumentError('닉네임이 비어 있어요.');
+    }
+    if (uid.trim().isEmpty) {
+      throw ArgumentError('로그인이 필요해요.');
+    }
+
+    final previous = previousNickname == null
+        ? ''
+        : normalizeNickname(previousNickname);
+
+    await _firestore.runTransaction((tx) async {
+      final nickRef = _nicknames.doc(cleaned);
+      final nickSnap = await tx.get(nickRef);
+
+      DocumentSnapshot<Map<String, dynamic>>? previousSnap;
+      DocumentReference<Map<String, dynamic>>? previousRef;
+      if (previous.isNotEmpty && previous != cleaned) {
+        previousRef = _nicknames.doc(previous);
+        previousSnap = await tx.get(previousRef);
+      }
+
+      if (nickSnap.exists) {
+        final owner = (nickSnap.data()?['uid'] as String?)?.trim();
+        if (owner != null && owner.isNotEmpty && owner != uid) {
+          throw NicknameTakenException();
+        }
+      }
+
+      tx.set(nickRef, {
+        'uid': uid,
+        'nickname': cleaned,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      tx.set(
+        _users.doc(uid),
+        {
+          'nickname': cleaned,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (previousRef != null && previousSnap != null && previousSnap.exists) {
+        final owner = (previousSnap.data()?['uid'] as String?)?.trim();
+        if (owner == uid) {
+          tx.delete(previousRef);
+        }
+      }
+    });
+  }
+}

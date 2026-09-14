@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/auth_service.dart';
 import '../core/nickname_validator.dart';
+import '../services/auth_service.dart';
+import '../services/nickname_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
 import 'main_shell.dart';
@@ -20,6 +21,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String _cafeType = '개인카페';
   String _selectedExperience = '3개월 이상';
   String? _nicknameErrorText;
+  bool _submitting = false;
 
   static const List<String> _experienceOptions = [
     '1개월 미만',
@@ -36,42 +38,86 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  bool _validateNickname(String nickname) {
+  bool _validateNicknameFormat(String nickname) {
     final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
     final error = nicknameValidationError(cleaned);
     setState(() => _nicknameErrorText = error);
     return error == null;
   }
 
-  void _completeOnboarding() {
+  Future<void> _completeOnboarding() async {
+    if (_submitting) return;
+
     final sanitizedNickname =
         _nicknameController.text.replaceAll(RegExp(r'\s+'), '').trim();
 
-    if (!_validateNickname(sanitizedNickname)) {
+    if (!_validateNicknameFormat(sanitizedNickname)) {
       return;
     }
 
-    // Keep field in sync with sanitized value
     if (_nicknameController.text != sanitizedNickname) {
       _nicknameController.text = sanitizedNickname;
     }
 
-    // TODO: persist with Kakao UID on backend + duplicate check
-    AuthService.instance.completeOnboarding(
-      nickname: sanitizedNickname,
-      cafeType: _cafeType,
-      experience: _selectedExperience,
-    );
-
-    if (!mounted) return;
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop(true);
+    final auth = AuthService.instance;
+    final uid = auth.kakaoUserId;
+    if (uid == null || uid.isEmpty) {
+      setState(() => _nicknameErrorText = '로그인 정보가 없어요. 다시 로그인해 주세요.');
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const MainShell()),
-      (route) => false,
-    );
+
+    if (auth.isNicknameUsedLocally(sanitizedNickname, excludeUid: uid)) {
+      setState(() => _nicknameErrorText = '이미 사용 중인 닉네임이에요.');
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final taken = await NicknameService.instance.isNicknameTaken(
+        sanitizedNickname,
+        excludeUid: uid,
+      );
+      if (taken) {
+        if (!mounted) return;
+        setState(() {
+          _nicknameErrorText = '이미 사용 중인 닉네임이에요.';
+          _submitting = false;
+        });
+        return;
+      }
+
+      await NicknameService.instance.claimNickname(
+        uid: uid,
+        nickname: sanitizedNickname,
+      );
+
+      auth.completeOnboarding(
+        nickname: sanitizedNickname,
+        cafeType: _cafeType,
+        experience: _selectedExperience,
+      );
+
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop(true);
+        return;
+      }
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        (route) => false,
+      );
+    } on NicknameTakenException {
+      if (!mounted) return;
+      setState(() => _nicknameErrorText = '이미 사용 중인 닉네임이에요.');
+    } catch (e) {
+      debugPrint('닉네임 저장 실패: $e');
+      if (!mounted) return;
+      setState(
+        () => _nicknameErrorText = '닉네임 확인에 실패했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -268,23 +314,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 width: double.infinity,
                 height: 50,
                 child: FilledButton(
-                  onPressed: _completeOnboarding,
+                  onPressed: _submitting ? null : _completeOnboarding,
                   style: FilledButton.styleFrom(
                     backgroundColor: colors.onSurface,
                     foregroundColor: colors.surface,
+                    disabledBackgroundColor: colors.onSurface.withValues(
+                      alpha: 0.4,
+                    ),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    '시작하기',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: _submitting
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: colors.surface,
+                          ),
+                        )
+                      : const Text(
+                          '시작하기',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
             ],

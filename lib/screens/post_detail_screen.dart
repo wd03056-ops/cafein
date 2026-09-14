@@ -255,6 +255,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               MaterialPageRoute<void>(
                                 builder: (_) => TopicFeedScreen(
                                   topicName: post.topic!,
+                                  topicId: post.topicId,
                                 ),
                               ),
                             );
