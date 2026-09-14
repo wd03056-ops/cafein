@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "989402715537",
+    "project_id": "truestory-9eb36",
+    "storage_bucket": "truestory-9eb36.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:989402715537:android:6e2cf7dc0c584ea4fef630",
+        "android_client_info": {
+          "package_name": "com.cafein.cafein"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDgecDVXQvqOJLwri_M1mBTSW6-tPwmbsc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:989402715537:android:95e47ac8f3b773fafef630",
+        "android_client_info": {
+          "package_name": "com.koreatrip.koreatrip"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDgecDVXQvqOJLwri_M1mBTSW6-tPwmbsc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
