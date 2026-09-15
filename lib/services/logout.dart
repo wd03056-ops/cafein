@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 
 import 'auth_service.dart';
-import '../screens/login_screen.dart';
+import '../screens/main_shell.dart';
 
-/// Kakao logout + clear app session, then open login.
+/// Kakao logout + clear app session, then open feed (guest browse).
 Future<void> handleLogout(BuildContext context) async {
   try {
     await UserApi.instance.logout();
@@ -17,7 +17,7 @@ Future<void> handleLogout(BuildContext context) async {
 
   if (!context.mounted) return;
   Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+    MaterialPageRoute<void>(builder: (_) => const MainShell()),
     (route) => false,
   );
 }

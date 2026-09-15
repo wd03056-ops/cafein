@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/post.dart';
-import '../screens/login_screen.dart';
+import '../screens/auth_required_screen.dart';
 import 'auth_service.dart';
 import 'post_service.dart';
 import 'posts_firestore_service.dart';
@@ -10,18 +10,9 @@ Future<bool> _ensureKakaoWriter(BuildContext context) async {
   final auth = AuthService.instance;
   if (auth.canWriteContent) return true;
 
-  final loggedIn = await Navigator.of(context).push<bool>(
-    MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
-  );
-  if (loggedIn != true || !context.mounted) return false;
-
-  if (!auth.canWriteContent) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('카카오 로그인과 프로필 설정을 완료해 주세요.')),
-    );
-    return false;
-  }
-  return true;
+  final ready = await AuthRequiredScreen.ensureWriter(context);
+  if (!ready || !context.mounted) return false;
+  return auth.canWriteContent;
 }
 
 /// Like toggle — Kakao login + onboarding required (no Firebase Auth).

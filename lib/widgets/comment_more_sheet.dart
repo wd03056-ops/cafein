@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/comment.dart';
-import '../screens/login_screen.dart';
+import '../screens/auth_required_screen.dart';
 import '../services/auth_service.dart';
 import '../services/block_firestore_service.dart';
 import '../services/comments_firestore_service.dart';
@@ -121,10 +121,7 @@ class CommentMoreSheet {
 
   static Future<bool> _ensureWriter(BuildContext context) async {
     if (AuthService.instance.canWriteContent) return true;
-    final loggedIn = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
-    );
-    return loggedIn == true && AuthService.instance.canWriteContent;
+    return AuthRequiredScreen.ensureWriter(context);
   }
 
   static Future<void> _report(BuildContext context, Comment comment) async {

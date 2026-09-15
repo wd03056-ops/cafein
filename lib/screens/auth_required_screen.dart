@@ -1,11 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import 'login_screen.dart';
 
-/// Shown before write when not logged in — opens Kakao login.
+/// Prompt shown when a guest tries to write / comment / like / vote.
 class AuthRequiredScreen extends StatelessWidget {
-  const AuthRequiredScreen({super.key});
+  const AuthRequiredScreen({
+    super.key,
+    this.title = '로그인이나 회원가입이 필요해요',
+    this.message =
+        '글을 보기는 로그인 없이 가능해요.\n글을 쓰거나 댓글을 남기거나 공감하려면\n로그인 또는 회원가입이 필요합니다.',
+  });
+
+  final String title;
+  final String message;
+
+  /// Opens this screen, then Kakao login/onboarding if needed.
+  /// Returns true when the user can write content afterwards.
+  static Future<bool> ensureWriter(BuildContext context) async {
+    if (AuthService.instance.canWriteContent) return true;
+    final authReady = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const AuthRequiredScreen()),
+    );
+    return authReady == true && AuthService.instance.canWriteContent;
+  }
 
   Future<void> _startLogin(BuildContext context) async {
     final completed = await Navigator.of(context).push<bool>(
@@ -31,7 +50,7 @@ class AuthRequiredScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 24),
             Text(
-              '글을 쓰려면 로그인이 필요해요',
+              title,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: colors.onSurface,
@@ -39,7 +58,7 @@ class AuthRequiredScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '카카오로 시작하면 닉네임과 근무 정보를\n입력한 뒤 익명으로 이야기를 나눌 수 있어요.',
+              message,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: colors.onSurface,
                 height: 1.5,
@@ -70,7 +89,7 @@ class AuthRequiredScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(context).pop(false),
               style: TextButton.styleFrom(foregroundColor: colors.onSurface),
               child: const Text('돌아가서 글 구경하기'),
             ),

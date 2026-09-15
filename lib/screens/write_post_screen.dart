@@ -694,7 +694,7 @@ class _WritePostScreenState extends State<WritePostScreen> {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('카카오 로그인과 프로필 설정을 완료해 주세요.')),
+        const SnackBar(content: Text('로그인이나 회원가입 후 글을 작성할 수 있어요.')),
       );
       return;
     }

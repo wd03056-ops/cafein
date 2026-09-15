@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/nickname_validator.dart';
 import '../services/auth_service.dart';
+import '../services/logout.dart';
 import '../services/nickname_service.dart';
 import '../theme/app_colors.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
@@ -148,29 +149,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
   }
 
+  Future<void> _goBack() async {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop(false);
+      return;
+    }
+    // Root onboarding (e.g. restored Kakao session) → logout to login screen.
+    await handleLogout(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop();
     const radius = BorderRadius.all(Radius.circular(12));
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        // Keep a stable toolbar geometry — leadingWidth: 0 can clip under status bar.
         automaticallyImplyLeading: false,
-        leadingWidth: canPop ? 48 : 16,
         titleSpacing: 0,
-        leading: canPop
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: '뒤로',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                onPressed: () => Navigator.of(context).maybePop(),
-              )
-            : const SizedBox.shrink(),
-        title: const Text('추가 정보 입력'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: '뒤로',
+          onPressed: _submitting ? null : _goBack,
+        ),
+        title: const SizedBox.shrink(),
       ),
       body: SafeArea(
         top: false,
@@ -181,7 +185,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '커뮤니티에서 사용할\n정보를 입력해주세요.',
+                '카페인에서 사용할\n정보를 입력해 주세요.',
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 22,

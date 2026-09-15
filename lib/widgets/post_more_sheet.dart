@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/post.dart';
-import '../screens/login_screen.dart';
+import '../screens/auth_required_screen.dart';
 import '../screens/write_post_screen.dart';
 import '../services/auth_service.dart';
 import '../services/block_firestore_service.dart';
@@ -208,10 +208,7 @@ class PostMoreSheet {
 
   static Future<bool> _ensureWriter(BuildContext context) async {
     if (AuthService.instance.canWriteContent) return true;
-    final loggedIn = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
-    );
-    return loggedIn == true && AuthService.instance.canWriteContent;
+    return AuthRequiredScreen.ensureWriter(context);
   }
 
   static Future<void> _reportPost(BuildContext context, Post post) async {

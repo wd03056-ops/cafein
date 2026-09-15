@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/constants.dart';
-import '../screens/login_screen.dart';
+import '../screens/main_shell.dart';
 import '../services/account_withdrawal_service.dart';
 import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
@@ -176,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // loading
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+        MaterialPageRoute<void>(builder: (_) => const MainShell()),
         (route) => false,
       );
     } catch (e, st) {

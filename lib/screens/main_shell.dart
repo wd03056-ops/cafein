@@ -23,10 +23,8 @@ class _MainShellState extends State<MainShell> {
 
   Future<void> _openWrite() async {
     if (!_authService.hasCompletedOnboarding) {
-      final ready = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(builder: (_) => const AuthRequiredScreen()),
-      );
-      if (ready != true || !mounted) return;
+      final ready = await AuthRequiredScreen.ensureWriter(context);
+      if (!ready || !mounted) return;
     }
     if (!mounted) return;
     await Navigator.of(context).push(

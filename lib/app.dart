@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'core/constants.dart';
-import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/auth_service.dart';
@@ -19,7 +18,8 @@ class CafeinApp extends StatelessWidget {
     return switch (initialSession) {
       KakaoSessionStatus.authenticated => const MainShell(),
       KakaoSessionStatus.needsOnboarding => const OnboardingScreen(),
-      KakaoSessionStatus.none => const LoginScreen(),
+      // Guests can browse the feed; write/comment/like require login.
+      KakaoSessionStatus.none => const MainShell(),
     };
   }
 

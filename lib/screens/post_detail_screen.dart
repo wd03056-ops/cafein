@@ -22,7 +22,7 @@ import '../widgets/post_more_sheet.dart';
 import '../widgets/related_post_card.dart';
 import '../widgets/topic_pill.dart';
 import '../widgets/user_badge.dart';
-import 'login_screen.dart';
+import 'auth_required_screen.dart';
 import 'topic_feed_screen.dart';
 
 /// Post detail — accepts full [post] from the list, or [postId] lookup.
@@ -151,16 +151,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
 
     final auth = AuthService.instance;
     if (!auth.canWriteContent) {
-      final loggedIn = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
-      );
-      if (loggedIn != true || !mounted) return;
-      if (!AuthService.instance.canWriteContent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('카카오 로그인과 프로필 설정을 완료해 주세요.')),
-        );
-        return;
-      }
+      final ready = await AuthRequiredScreen.ensureWriter(context);
+      if (!ready || !mounted) return;
+      if (!AuthService.instance.canWriteContent) return;
     }
 
     final authorId = AuthService.instance.kakaoUserId;
@@ -168,7 +161,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     if (authorId == null || authorId.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('로그인 후 댓글을 남길 수 있어요.')),
+        const SnackBar(content: Text('로그인이나 회원가입 후 댓글을 남길 수 있어요.')),
       );
       return;
     }
@@ -566,60 +559,94 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _commentController,
-                      focusNode: _commentFocus,
-                      enabled: !_submitting,
-                      minLines: 1,
-                      maxLines: 3,
-                      keyboardType: TextInputType.multiline,
-                      textInputAction: TextInputAction.send,
-                      spellCheckConfiguration:
-                          const SpellCheckConfiguration.disabled(),
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                        color: colors.onSurface,
-                        decoration: TextDecoration.none,
-                        decorationThickness: 0,
-                      ),
-                      cursorColor: colors.onSurface,
-                      decoration: InputDecoration(
-                        hintText: '댓글을 남겨보세요',
-                        hintStyle: TextStyle(
-                          fontFamily: 'Pretendard',
-                          color: colors.muted,
-                          decoration: TextDecoration.none,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        filled: true,
-                        fillColor: colors.fill,
-                      ),
-                      onSubmitted: (_) => _submitComment(),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _submitting ? null : _submitComment,
-                    icon: _submitting
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colors.onSurface,
+              child: Builder(
+                builder: (context) {
+                  final loggedIn = AuthService.instance.canWriteContent;
+                  final canSubmit = loggedIn && !_submitting;
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _commentController,
+                          focusNode: _commentFocus,
+                          enabled: !_submitting,
+                          readOnly: !loggedIn,
+                          enableInteractiveSelection: loggedIn,
+                          minLines: 1,
+                          maxLines: 3,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.send,
+                          spellCheckConfiguration:
+                              const SpellCheckConfiguration.disabled(),
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w400,
+                            color: colors.onSurface,
+                            decoration: TextDecoration.none,
+                            decorationThickness: 0,
+                          ),
+                          cursorColor: colors.onSurface,
+                          decoration: InputDecoration(
+                            hintText: loggedIn
+                                ? '댓글을 남겨보세요'
+                                : '로그인/회원가입을 해주셔야 가능합니다.',
+                            hintStyle: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: loggedIn ? 15 : 13,
+                              color: colors.muted,
+                              decoration: TextDecoration.none,
                             ),
-                          )
-                        : const Icon(Icons.arrow_upward),
-                    tooltip: '등록',
-                  ),
-                ],
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            filled: true,
+                            fillColor: colors.fill,
+                          ),
+                          onTap: loggedIn
+                              ? null
+                              : () async {
+                                  _commentFocus.unfocus();
+                                  final ready =
+                                      await AuthRequiredScreen.ensureWriter(
+                                    context,
+                                  );
+                                  if (ready && mounted) setState(() {});
+                                },
+                          onSubmitted:
+                              canSubmit ? (_) => _submitComment() : null,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _submitting
+                            ? null
+                            : () async {
+                                if (!loggedIn) {
+                                  final ready =
+                                      await AuthRequiredScreen.ensureWriter(
+                                    context,
+                                  );
+                                  if (ready && mounted) setState(() {});
+                                  return;
+                                }
+                                await _submitComment();
+                              },
+                        icon: _submitting
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.onSurface,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_upward),
+                        tooltip: loggedIn ? '등록' : '로그인 필요',
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
