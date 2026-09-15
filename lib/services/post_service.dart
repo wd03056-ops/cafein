@@ -6,6 +6,7 @@ import '../models/comment.dart';
 import '../models/poll.dart';
 import '../models/post.dart';
 import '../models/topic.dart';
+import 'auth_service.dart';
 
 /// Post / like / poll / comment / topic in-memory logic.
 /// Currently mock only. Swap internals later; keep this API.
@@ -19,7 +20,16 @@ class PostService extends ChangeNotifier {
 
   List<Post> get posts => List.unmodifiable(_posts);
 
-  bool isMyPost(String postId) => _myPostIds.contains(postId);
+  /// True if the signed-in Kakao user authored the post, or it was written
+  /// in this session (`_myPostIds`).
+  bool isMyPost(String postId, {Post? post}) {
+    if (_myPostIds.contains(postId)) return true;
+    final uid = AuthService.instance.kakaoUserId?.trim();
+    if (uid == null || uid.isEmpty) return false;
+    final resolved = post ?? getById(postId);
+    final authorId = resolved?.authorId?.trim();
+    return authorId != null && authorId.isNotEmpty && authorId == uid;
+  }
 
   void markAsMyPost(String postId) {
     if (postId.isEmpty) return;
@@ -72,10 +82,8 @@ class PostService extends ChangeNotifier {
     if (index >= 0) {
       final local = _posts[index];
       _posts[index] = post.copyWith(
-        likedByMe: local.likedByMe,
-        likeCount: local.likedByMe ? local.likeCount : post.likeCount,
         comments: local.comments.isNotEmpty ? local.comments : post.comments,
-        poll: local.poll ?? post.poll,
+        poll: post.poll ?? local.poll,
         authorProfileImage:
             post.authorProfileImage ?? local.authorProfileImage,
         authorId: post.authorId ?? local.authorId,
@@ -396,9 +404,8 @@ class PostService extends ChangeNotifier {
     return true;
   }
 
-  /// Owner-only delete.
+  /// Remove from local cache (ownership is checked by the caller / Firestore).
   bool deletePost(String postId) {
-    if (!isMyPost(postId)) return false;
     final before = _posts.length;
     _posts.removeWhere((p) => p.id == postId);
     _myPostIds.remove(postId);

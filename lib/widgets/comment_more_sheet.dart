@@ -1,28 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../models/post.dart';
+import '../models/comment.dart';
 import '../screens/login_screen.dart';
-import '../screens/write_post_screen.dart';
 import '../services/auth_service.dart';
 import '../services/block_firestore_service.dart';
-import '../services/post_service.dart';
-import '../services/posts_firestore_service.dart';
+import '../services/comments_firestore_service.dart';
 import '../services/report_firestore_service.dart';
 import 'report_bottom_sheet.dart';
-import 'topic_picker_sheet.dart';
 
-/// Post overflow: share / edit / report / block / delete (owner).
-class PostMoreSheet {
+/// Comment overflow: report / block / delete (own).
+class CommentMoreSheet {
   static Future<void> show(
     BuildContext context, {
-    required Post post,
+    required Comment comment,
+    VoidCallback? onDeleted,
   }) async {
-    final service = PostService.instance;
-    final postsFs = PostsFirestoreService.instance;
-    final mine = service.isMyPost(post.id, post: post);
     final colors = Theme.of(context).colorScheme;
-    final authorId = post.authorId?.trim() ?? '';
+    final myId = AuthService.instance.kakaoUserId?.trim() ?? '';
+    final authorId = comment.authorId?.trim() ?? '';
+    final mine = myId.isNotEmpty && authorId.isNotEmpty && myId == authorId;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -32,89 +28,6 @@ class PostMoreSheet {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                title: Text(
-                  '공유',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    color: colors.onSurface,
-                  ),
-                ),
-                onTap: () async {
-                  Navigator.pop(sheetContext);
-                  final text = post.topic == null
-                      ? post.content
-                      : '[${post.topic}] ${post.content}';
-                  await Clipboard.setData(ClipboardData(text: text));
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('글 내용을 복사했어요.')),
-                  );
-                },
-              ),
-              if (mine)
-                ListTile(
-                  title: Text(
-                    '수정',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.onSurface,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => WritePostScreen(editPostId: post.id),
-                      ),
-                    );
-                  },
-                ),
-              if (mine)
-                ListTile(
-                  title: Text(
-                    '주제 수정',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.onSurface,
-                    ),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    final selected = await TopicPickerSheet.show(
-                      context,
-                      initialTopic: post.topic,
-                      title: '주제 수정',
-                      hintText: '주제를 입력하세요',
-                      showClearOption: true,
-                    );
-                    if (selected == null || !context.mounted) return;
-                    try {
-                      final updated = await postsFs.updatePostTopic(
-                        postId: post.id,
-                        topicName: selected.isEmpty ? null : selected,
-                      );
-                      service.upsertRemotePost(updated);
-                      service.updatePostTopic(
-                        post.id,
-                        selected.isEmpty ? null : selected,
-                      );
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('주제를 수정했어요.')),
-                      );
-                    } catch (e) {
-                      debugPrint('주제 수정 실패: $e');
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('주제를 수정할 수 없어요.')),
-                      );
-                    }
-                  },
-                ),
               if (!mine) ...[
                 ListTile(
                   title: Text(
@@ -127,7 +40,7 @@ class PostMoreSheet {
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _reportPost(context, post);
+                    _report(context, comment);
                   },
                 ),
                 if (authorId.isNotEmpty)
@@ -142,7 +55,7 @@ class PostMoreSheet {
                     ),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      _blockAuthor(context, authorId);
+                      _block(context, authorId);
                     },
                   ),
               ],
@@ -161,8 +74,8 @@ class PostMoreSheet {
                     final ok = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text('게시글 삭제'),
-                        content: const Text('게시글을 삭제하시겠습니까?'),
+                        title: const Text('댓글 삭제'),
+                        content: const Text('댓글을 삭제하시겠습니까?'),
                         actions: [
                           TextButton(
                             onPressed: () => Navigator.pop(ctx, false),
@@ -180,20 +93,20 @@ class PostMoreSheet {
                     );
                     if (ok != true || !context.mounted) return;
                     try {
-                      await postsFs.deletePost(post.id);
-                      service.deletePost(post.id);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('글을 삭제했어요.')),
+                      await CommentsFirestoreService.instance.deleteComment(
+                        postId: comment.postId,
+                        commentId: comment.id,
                       );
-                      if (Navigator.of(context).canPop()) {
-                        Navigator.of(context).pop();
-                      }
-                    } catch (e) {
-                      debugPrint('글 삭제 실패: $e');
+                      onDeleted?.call();
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('글을 삭제할 수 없어요.')),
+                        const SnackBar(content: Text('댓글을 삭제했어요.')),
+                      );
+                    } catch (e) {
+                      debugPrint('댓글 삭제 실패: $e');
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('댓글을 삭제할 수 없어요.')),
                       );
                     }
                   },
@@ -214,16 +127,16 @@ class PostMoreSheet {
     return loggedIn == true && AuthService.instance.canWriteContent;
   }
 
-  static Future<void> _reportPost(BuildContext context, Post post) async {
+  static Future<void> _report(BuildContext context, Comment comment) async {
     if (!await _ensureWriter(context) || !context.mounted) return;
     await ReportBottomSheet.show(
       context,
       onSubmit: (reason) async {
         try {
           await ReportFirestoreService.instance.submitReport(
-            targetType: 'post',
-            targetId: post.id,
-            targetAuthorId: post.authorId,
+            targetType: 'comment',
+            targetId: comment.id,
+            targetAuthorId: comment.authorId,
             reason: reason,
           );
           if (!context.mounted) return;
@@ -231,7 +144,7 @@ class PostMoreSheet {
             const SnackBar(content: Text('신고가 접수되었습니다.')),
           );
         } catch (e) {
-          debugPrint('신고 실패: $e');
+          debugPrint('댓글 신고 실패: $e');
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('신고를 접수하지 못했어요.')),
@@ -241,10 +154,7 @@ class PostMoreSheet {
     );
   }
 
-  static Future<void> _blockAuthor(
-    BuildContext context,
-    String authorId,
-  ) async {
+  static Future<void> _block(BuildContext context, String authorId) async {
     if (!await _ensureWriter(context) || !context.mounted) return;
     final ok = await showDialog<bool>(
       context: context,
@@ -274,9 +184,6 @@ class PostMoreSheet {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('사용자를 차단했어요.')),
       );
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
     } catch (e) {
       debugPrint('차단 실패: $e');
       if (!context.mounted) return;

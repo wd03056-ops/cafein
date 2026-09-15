@@ -56,6 +56,9 @@ enum KakaoSessionStatus {
 }
 
 /// Auth + onboarding profile, keyed by Kakao user id.
+///
+/// Firebase Auth (Email/Password etc.) is intentionally not used.
+/// Identity is Kakao OAuth + in-app onboarding only.
 class AuthService extends ChangeNotifier {
   AuthService._();
   static final AuthService instance = AuthService._();
@@ -85,6 +88,20 @@ class AuthService extends ChangeNotifier {
   bool get needsOnboarding =>
       _kakaoUserId != null &&
       (_nickname == null || _nickname!.trim().isEmpty);
+
+  /// Kakao login completed + in-app profile set (can write posts/comments/likes).
+  bool get canWriteContent {
+    if (!hasCompletedOnboarding) return false;
+    final kakaoId = _kakaoUserId?.trim();
+    return kakaoId != null && kakaoId.isNotEmpty;
+  }
+
+  /// Throws if the user cannot create posts / comments / likes / votes.
+  void requireKakaoWriter() {
+    if (!canWriteContent) {
+      throw StateError('카카오 로그인과 프로필 설정을 완료해 주세요.');
+    }
+  }
 
   /// Load persisted profiles once at startup.
   Future<void> init() async {
@@ -137,14 +154,14 @@ class AuthService extends ChangeNotifier {
         return KakaoSessionStatus.none;
       }
 
-      // Validates token (refresh if needed) and fetches user id.
       final user = await UserApi.instance.me();
       final kakaoUserId = user.id.toString();
       debugPrint('자동 로그인: 카카오 유저 ID $kakaoUserId');
 
+      final needsOnboarding = signInWithKakao(kakaoUserId);
+
       final kakaoAccount = user.kakaoAccount;
       final kakaoProfile = kakaoAccount?.profile;
-      // Don't block first frame on Firestore — sync in background.
       unawaited(
         saveUserToFirestore(
           uid: kakaoUserId,
@@ -154,7 +171,6 @@ class AuthService extends ChangeNotifier {
         ),
       );
 
-      final needsOnboarding = signInWithKakao(kakaoUserId);
       return needsOnboarding
           ? KakaoSessionStatus.needsOnboarding
           : KakaoSessionStatus.authenticated;
@@ -166,7 +182,7 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Called after Kakao login succeeds.
-  /// Returns true when onboarding is still required.
+  /// Returns true when onboarding (앱 내 정보 입력) is still required.
   bool signInWithKakao(String kakaoUserId) {
     _kakaoUserId = kakaoUserId;
     final existing = _profilesByKakaoId[kakaoUserId];
@@ -209,7 +225,6 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// True if another local Kakao profile already uses [nickname].
   bool isNicknameUsedLocally(String nickname, {String? excludeUid}) {
     final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
     if (cleaned.isEmpty) return false;

@@ -101,6 +101,19 @@ class Post {
     final commentCount = _parseInt(data['commentCount']) ?? 0;
     final experience = (data['experience'] as String?)?.trim();
     final cafeType = (data['cafeType'] as String?)?.trim();
+    Poll? poll;
+    final rawPoll = data['poll'];
+    if (rawPoll is Map<String, dynamic>) {
+      poll = Poll.fromMap(rawPoll);
+      if (poll.question.isEmpty || poll.options.length < 2) {
+        poll = null;
+      }
+    } else if (rawPoll is Map) {
+      poll = Poll.fromMap(Map<String, dynamic>.from(rawPoll));
+      if (poll.question.isEmpty || poll.options.length < 2) {
+        poll = null;
+      }
+    }
 
     return Post(
       id: id,
@@ -117,6 +130,7 @@ class Post {
       experience: experience,
       cafeType: cafeType,
       remoteCommentCount: commentCount,
+      poll: poll,
     );
   }
 

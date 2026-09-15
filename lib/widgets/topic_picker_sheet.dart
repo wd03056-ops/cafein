@@ -391,7 +391,11 @@ class _TopicChip extends StatelessWidget {
     final Color fg;
     final FontWeight weight;
 
-    if (selected || emphasized) {
+    if (emphasized) {
+      bg = Colors.transparent;
+      fg = colors.onSurface;
+      weight = FontWeight.w600;
+    } else if (selected) {
       bg = colors.onSurface;
       fg = colors.surface;
       weight = FontWeight.w600;

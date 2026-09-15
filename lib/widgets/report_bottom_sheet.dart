@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Report reason picker UI. Server save is wired later.
-class ReportBottomSheet extends StatelessWidget {
+/// Report reason picker. Caller persists via [onSubmit].
+class ReportBottomSheet extends StatefulWidget {
   const ReportBottomSheet({
     super.key,
     required this.onSubmit,
@@ -11,9 +11,10 @@ class ReportBottomSheet extends StatelessWidget {
 
   static const reasons = [
     '욕설/비방',
-    '광고/홍보',
+    '성적인 내용',
     '개인정보 노출',
-    '허위/악의적인 내용',
+    '광고/스팸',
+    '불법/부적절한 내용',
     '기타',
   ];
 
@@ -24,9 +25,17 @@ class ReportBottomSheet extends StatelessWidget {
     return showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (context) => ReportBottomSheet(onSubmit: onSubmit),
     );
   }
+
+  @override
+  State<ReportBottomSheet> createState() => _ReportBottomSheetState();
+}
+
+class _ReportBottomSheetState extends State<ReportBottomSheet> {
+  String? _selected;
 
   @override
   Widget build(BuildContext context) {
@@ -49,16 +58,53 @@ class ReportBottomSheet extends StatelessWidget {
                 ),
               ),
             ),
-            ...reasons.map(
-              (reason) => ListTile(
+            ...ReportBottomSheet.reasons.map((reason) {
+              final selected = _selected == reason;
+              return ListTile(
                 title: Text(
                   reason,
-                  style: TextStyle(color: colors.onSurface),
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 15,
+                    color: colors.onSurface,
+                  ),
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onSubmit(reason);
-                },
+                leading: Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: colors.onSurface,
+                  size: 22,
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                onTap: () => setState(() => _selected = reason),
+              );
+            }),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: FilledButton(
+                onPressed: _selected == null
+                    ? null
+                    : () {
+                        final reason = _selected!;
+                        Navigator.pop(context);
+                        widget.onSubmit(reason);
+                      },
+                style: FilledButton.styleFrom(
+                  backgroundColor: colors.onSurface,
+                  foregroundColor: colors.surface,
+                  disabledBackgroundColor:
+                      colors.onSurface.withValues(alpha: 0.2),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                child: const Text(
+                  '신고하기',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
           ],

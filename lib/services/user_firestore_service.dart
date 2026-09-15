@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-/// Profile fields stored in Firestore `users/{uid}`.
+/// Profile fields stored in Firestore `users/{kakaoUserId}`.
 class FirestoreUserProfile {
   const FirestoreUserProfile({
     required this.uid,
@@ -29,20 +29,21 @@ class FirestoreUserProfile {
   }
 }
 
-/// Saves Kakao account fields to Firestore `users/{uid}`.
+/// Saves Kakao account fields to Firestore `users/{kakaoUid}`.
 ///
-/// Does not overwrite [nickname] — that is reserved for the app nickname
-/// claimed via [NicknameService].
+/// Does not overwrite app [nickname] claimed via NicknameService.
 Future<void> saveUserToFirestore({
   required String uid,
   required String nickname,
   required String profileImage,
   required String email,
 }) async {
-  final firestore = FirebaseFirestore.instance;
+  final id = uid.trim();
+  if (id.isEmpty) return;
 
   try {
-    await firestore.collection('users').doc(uid).set({
+    await FirebaseFirestore.instance.collection('users').doc(id).set({
+      'kakaoUserId': id,
       'kakaoNickname': nickname,
       'profileImage': profileImage,
       'email': email,
@@ -50,13 +51,12 @@ Future<void> saveUserToFirestore({
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    debugPrint('유저 데이터 파이어스토어 저장 성공!');
+    debugPrint('유저 데이터 파이어스토어 저장 성공! ($id)');
   } catch (e) {
     debugPrint('유저 데이터 저장 실패: $e');
   }
 }
 
-/// Real-time stream of the signed-in user's Firestore profile.
 Stream<FirestoreUserProfile?> watchUserProfile(String uid) {
   if (uid.trim().isEmpty) {
     return Stream.value(null);

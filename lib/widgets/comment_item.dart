@@ -10,12 +10,12 @@ class CommentItem extends StatelessWidget {
   const CommentItem({
     super.key,
     required this.comment,
-    required this.onReport,
+    required this.onMore,
     this.onLike,
   });
 
   final Comment comment;
-  final VoidCallback onReport;
+  final VoidCallback onMore;
   final VoidCallback? onLike;
 
   @override
@@ -108,7 +108,7 @@ class CommentItem extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                       icon: const Icon(Icons.more_horiz, size: 18),
                       color: colors.onSurface,
-                      onPressed: onReport,
+                      onPressed: onMore,
                       tooltip: '더보기',
                     ),
                   ],

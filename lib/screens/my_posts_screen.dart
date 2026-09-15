@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/post.dart';
 import '../services/auth_service.dart';
+import '../services/poll_vote_helper.dart';
 import '../services/post_service.dart';
 import '../services/posts_firestore_service.dart';
 import '../theme/app_colors.dart';
@@ -150,10 +151,11 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
                         ),
                       );
                     },
-                    onVote: (optionId) {
-                      _postService.upsertRemotePost(post);
-                      _postService.vote(post.id, optionId);
-                    },
+                    onVote: (optionId) => castPostVote(
+                      context,
+                      post: post,
+                      optionId: optionId,
+                    ),
                   );
                 },
               );

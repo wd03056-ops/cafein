@@ -58,7 +58,7 @@ class FeedPollPreview extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.xs),
             child: Text(
-              '총 $total표',
+              '총 $total명 참여',
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 11,

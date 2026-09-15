@@ -11,7 +11,6 @@ Future<void> handleLogout(BuildContext context) async {
     debugPrint('카카오 로그아웃 성공');
   } catch (error) {
     debugPrint('카카오 로그아웃 실패: $error');
-    // Continue clearing local session even if Kakao logout fails.
   }
 
   AuthService.instance.clearSession();

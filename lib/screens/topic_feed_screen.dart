@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/post.dart';
 import '../models/topic.dart';
+import '../services/block_firestore_service.dart';
+import '../services/like_helper.dart';
 import '../services/post_service.dart';
+import '../services/poll_vote_helper.dart';
 import '../services/posts_firestore_service.dart';
 import '../services/topics_firestore_service.dart';
 import '../theme/app_colors.dart';
@@ -40,7 +43,19 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
   @override
   void initState() {
     super.initState();
+    BlockFirestoreService.instance.addListener(_onBlocksChanged);
+    BlockFirestoreService.instance.ensureLoaded();
     _load();
+  }
+
+  void _onBlocksChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    BlockFirestoreService.instance.removeListener(_onBlocksChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -81,7 +96,10 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
   }
 
   List<Post> get _sortedPosts {
-    final list = List<Post>.from(_posts);
+    final list = BlockFirestoreService.instance.filterByAuthorId(
+      _posts,
+      (p) => p.authorId,
+    );
     switch (_sort) {
       case PostSort.popular:
         list.sort((a, b) {
@@ -212,18 +230,17 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
                                     ),
                                   );
                                 },
-                                onLike: () {
-                                  _postService.upsertRemotePost(post);
-                                  _postService.toggleLike(post.id);
-                                },
+                                onLike: () =>
+                                    togglePostLike(context, post: post),
                                 onTopicTap: (topic) => _openTopic(
                                   topic,
                                   topicId: post.topicId,
                                 ),
-                                onVote: (optionId) {
-                                  _postService.upsertRemotePost(post);
-                                  _postService.vote(post.id, optionId);
-                                },
+                                onVote: (optionId) => castPostVote(
+                                  context,
+                                  post: post,
+                                  optionId: optionId,
+                                ),
                               );
                             },
                           ),

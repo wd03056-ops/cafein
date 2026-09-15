@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
 import '../models/post.dart';
+import '../services/block_firestore_service.dart';
+import '../services/like_helper.dart';
+import '../services/poll_vote_helper.dart';
 import '../services/post_service.dart';
 import '../services/posts_firestore_service.dart';
 import '../theme/app_colors.dart';
@@ -24,6 +29,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _postService = PostService.instance;
   final _postsFirestore = PostsFirestoreService.instance;
+  final _blocks = BlockFirestoreService.instance;
   late final Stream<List<Post>> _postsStream;
   PostSort _sort = PostSort.latest;
 
@@ -32,6 +38,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _postsStream = _postsFirestore.watchPosts();
     _postService.addListener(_onChanged);
+    _blocks.addListener(_onChanged);
+    unawaited(_blocks.ensureLoaded());
   }
 
   void _onChanged() {
@@ -41,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _postService.removeListener(_onChanged);
+    _blocks.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -160,7 +169,12 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          final posts = _sorted(snapshot.data ?? const []);
+          final posts = _sorted(
+            _blocks.filterByAuthorId(
+              snapshot.data ?? const [],
+              (p) => p.authorId,
+            ),
+          );
           if (posts.isEmpty) {
             return Center(
               child: Text(
@@ -189,15 +203,12 @@ class _HomeScreenState extends State<HomeScreen> {
               return PostListItem(
                 post: post,
                 onTap: () => _openPost(post),
-                onLike: () {
-                  _postService.upsertRemotePost(post);
-                  _postService.toggleLike(post.id);
-                },
+                onLike: () => togglePostLike(context, post: post),
                 onMore: () {
                   _postService.upsertRemotePost(post);
                   PostMoreSheet.show(context, post: post);
                 },
-                onEdit: _postService.isMyPost(post.id)
+                onEdit: _postService.isMyPost(post.id, post: post)
                     ? () {
                         _postService.upsertRemotePost(post);
                         Navigator.of(context).push(
@@ -210,10 +221,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     : null,
                 onTopicTap: (topic) =>
                     _openTopic(topic, topicId: post.topicId),
-                onVote: (optionId) {
-                  _postService.upsertRemotePost(post);
-                  _postService.vote(post.id, optionId);
-                },
+                onVote: (optionId) => castPostVote(
+                  context,
+                  post: post,
+                  optionId: optionId,
+                ),
               );
             },
           );

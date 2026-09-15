@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/comment.dart';
+import 'auth_service.dart';
 
 /// Firestore comments under `posts/{postId}/comments`.
 class CommentsFirestoreService {
@@ -14,7 +15,6 @@ class CommentsFirestoreService {
     return _firestore.collection('posts').doc(postId).collection('comments');
   }
 
-  /// Oldest → newest.
   Stream<List<Comment>> watchComments(String postId) {
     return _commentsRef(postId)
         .orderBy('createdAt', descending: false)
@@ -37,6 +37,8 @@ class CommentsFirestoreService {
     required String authorNickname,
     String authorProfileImage = '',
   }) async {
+    AuthService.instance.requireKakaoWriter();
+
     final text = content.trim();
     if (text.isEmpty) {
       throw ArgumentError('댓글 내용이 비어 있어요.');
@@ -45,9 +47,8 @@ class CommentsFirestoreService {
       throw ArgumentError('로그인이 필요해요.');
     }
 
-    final nickname = authorNickname.trim().isEmpty
-        ? '익명'
-        : authorNickname.trim();
+    final nickname =
+        authorNickname.trim().isEmpty ? '익명' : authorNickname.trim();
 
     String profileImage = authorProfileImage.trim();
     if (profileImage.isEmpty) {
@@ -69,6 +70,7 @@ class CommentsFirestoreService {
       'authorNickname': nickname,
       'authorProfileImage': profileImage,
       'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
     batch.update(_firestore.collection('posts').doc(postId), {
       'commentCount': FieldValue.increment(1),
@@ -78,7 +80,6 @@ class CommentsFirestoreService {
     try {
       await batch.commit();
     } on FirebaseException catch (e) {
-      // Post doc may not exist yet (local-only posts) — still save comment.
       if (e.code == 'not-found') {
         await commentRef.set({
           'content': text,
@@ -86,10 +87,50 @@ class CommentsFirestoreService {
           'authorNickname': nickname,
           'authorProfileImage': profileImage,
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
         return;
       }
       rethrow;
     }
+  }
+
+  /// Owner-only delete. Decrements post `commentCount` (never below 0).
+  Future<void> deleteComment({
+    required String postId,
+    required String commentId,
+  }) async {
+    AuthService.instance.requireKakaoWriter();
+    final uid = AuthService.instance.kakaoUserId?.trim() ?? '';
+    if (uid.isEmpty) {
+      throw StateError('로그인이 필요해요.');
+    }
+
+    final commentRef = _commentsRef(postId).doc(commentId);
+    final postRef = _firestore.collection('posts').doc(postId);
+
+    await _firestore.runTransaction((tx) async {
+      final commentSnap = await tx.get(commentRef);
+      if (!commentSnap.exists || commentSnap.data() == null) {
+        throw StateError('댓글을 찾을 수 없어요.');
+      }
+      final authorId =
+          (commentSnap.data()?['authorId'] as String?)?.trim() ?? '';
+      if (authorId != uid) {
+        throw StateError('본인 댓글만 삭제할 수 있어요.');
+      }
+
+      final postSnap = await tx.get(postRef);
+      final current =
+          (postSnap.data()?['commentCount'] as num?)?.toInt() ?? 0;
+
+      tx.delete(commentRef);
+      if (postSnap.exists) {
+        tx.update(postRef, {
+          'commentCount': (current - 1).clamp(0, 1 << 30),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
   }
 }

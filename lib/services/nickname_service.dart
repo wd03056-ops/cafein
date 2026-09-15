@@ -10,10 +10,7 @@ class NicknameTakenException implements Exception {
 String normalizeNickname(String nickname) =>
     nickname.replaceAll(RegExp(r'\s+'), '').trim();
 
-/// Nickname uniqueness helpers backed by Firestore.
-///
-/// Uses `nicknames/{nickname}` as a unique index and keeps `users/{uid}.nickname`
-/// in sync.
+/// Nickname uniqueness via `nicknames/{nickname}` + `users/{kakaoUid}`.
 class NicknameService {
   NicknameService._();
   static final NicknameService instance = NicknameService._();
@@ -26,7 +23,6 @@ class NicknameService {
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
 
-  /// Returns true if [nickname] is already taken by someone else.
   Future<bool> isNicknameTaken(
     String nickname, {
     String? excludeUid,
@@ -43,7 +39,6 @@ class NicknameService {
         return true;
       }
 
-      // Fallback for older users docs without nicknames index.
       final users = await _users
           .where('nickname', isEqualTo: cleaned)
           .limit(2)
@@ -59,7 +54,6 @@ class NicknameService {
     }
   }
 
-  /// Claim [nickname] for [uid]. Releases [previousNickname] if owned by [uid].
   Future<void> claimNickname({
     required String uid,
     required String nickname,
@@ -105,6 +99,7 @@ class NicknameService {
         _users.doc(uid),
         {
           'nickname': cleaned,
+          'kakaoUserId': uid,
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),

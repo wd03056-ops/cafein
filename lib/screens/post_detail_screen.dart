@@ -1,19 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/time_format.dart';
 import '../models/comment.dart';
 import '../models/post.dart';
 import '../services/auth_service.dart';
+import '../services/block_firestore_service.dart';
 import '../services/comments_firestore_service.dart';
+import '../services/like_helper.dart';
+import '../services/poll_vote_helper.dart';
 import '../services/post_service.dart';
+import '../services/posts_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../widgets/comment_item.dart';
+import '../widgets/comment_more_sheet.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
 import '../widgets/poll_section.dart';
 import '../widgets/post_more_sheet.dart';
 import '../widgets/related_post_card.dart';
-import '../widgets/report_bottom_sheet.dart';
 import '../widgets/topic_pill.dart';
 import '../widgets/user_badge.dart';
 import 'login_screen.dart';
@@ -43,6 +49,7 @@ class PostDetailScreen extends StatefulWidget {
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
   final _postService = PostService.instance;
+  final _postsFirestore = PostsFirestoreService.instance;
   final _commentsFirestore = CommentsFirestoreService.instance;
   final _commentController = NoUnderlineTextEditingController();
   final _commentFocus = FocusNode();
@@ -50,6 +57,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   late final Stream<List<Comment>> _commentsStream;
   late Post _seedPost;
   bool _submitting = false;
+  List<Post> _similarPosts = const [];
+  bool _similarLoaded = false;
 
   @override
   void initState() {
@@ -61,12 +70,63 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
           content: '',
           createdAt: DateTime.now(),
         );
-    _postService.upsertRemotePost(_seedPost);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _postService.upsertRemotePost(_seedPost);
+    });
     _commentsStream =
         _commentsFirestore.watchComments(widget.resolvedPostId);
     _postService.addListener(_refresh);
+    BlockFirestoreService.instance.addListener(_refresh);
+    unawaited(BlockFirestoreService.instance.ensureLoaded());
+    _loadPostAndSimilar();
   }
 
+  Future<void> _loadPostAndSimilar() async {
+    try {
+      final remote = await _postsFirestore.getPost(widget.resolvedPostId);
+      if (remote != null && mounted) {
+        _postService.upsertRemotePost(remote);
+        setState(() => _seedPost = remote);
+      }
+    } catch (e) {
+      debugPrint('게시글 조회 실패: $e');
+    }
+
+    final topicId =
+        (_postService.getById(widget.resolvedPostId) ?? _seedPost)
+            .topicId
+            ?.trim();
+    if (topicId == null || topicId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _similarPosts = const [];
+          _similarLoaded = true;
+        });
+      }
+      return;
+    }
+
+    try {
+      final similar = await _postsFirestore.fetchSimilarPosts(
+        topicId: topicId,
+        excludePostId: widget.resolvedPostId,
+        limit: 5,
+      );
+      if (!mounted) return;
+      setState(() {
+        _similarPosts = similar;
+        _similarLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('비슷한 글 조회 실패: $e');
+      if (!mounted) return;
+      setState(() {
+        _similarPosts = const [];
+        _similarLoaded = true;
+      });
+    }
+  }
   void _refresh() {
     if (mounted) setState(() {});
   }
@@ -76,6 +136,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     _commentController.dispose();
     _commentFocus.dispose();
     _postService.removeListener(_refresh);
+    BlockFirestoreService.instance.removeListener(_refresh);
     super.dispose();
   }
 
@@ -89,11 +150,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     if (text.isEmpty) return;
 
     final auth = AuthService.instance;
-    if (!auth.isLoggedIn || auth.kakaoUserId == null) {
+    if (!auth.canWriteContent) {
       final loggedIn = await Navigator.of(context).push<bool>(
         MaterialPageRoute<bool>(builder: (_) => const LoginScreen()),
       );
       if (loggedIn != true || !mounted) return;
+      if (!AuthService.instance.canWriteContent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카카오 로그인과 프로필 설정을 완료해 주세요.')),
+        );
+        return;
+      }
     }
 
     final authorId = AuthService.instance.kakaoUserId;
@@ -128,27 +195,14 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
-  void _report(String targetType, String targetId) {
-    ReportBottomSheet.show(
-      context,
-      onSubmit: (reason) {
-        _postService.reportContent(
-          targetType: targetType,
-          targetId: targetId,
-          reason: reason,
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('신고가 접수되었습니다. (임시)')),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final post = _post;
-    final related = _postService.relatedPosts(post);
+    final blocks = BlockFirestoreService.instance;
+    final related = blocks.filterByAuthorId(
+      _similarLoaded ? _similarPosts : const <Post>[],
+      (p) => p.authorId,
+    );
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final title = post.title?.trim();
@@ -171,7 +225,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             child: StreamBuilder<List<Comment>>(
               stream: _commentsStream,
               builder: (context, snapshot) {
-                final comments = snapshot.data ?? const <Comment>[];
+                final rawComments = snapshot.data ?? const <Comment>[];
+                final comments = BlockFirestoreService.instance.filterByAuthorId(
+                  rawComments,
+                  (c) => c.authorId,
+                );
                 final loading = snapshot.connectionState ==
                         ConnectionState.waiting &&
                     !snapshot.hasData;
@@ -311,8 +369,11 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                         ),
                         child: PollSection(
                           poll: post.poll!,
-                          onVote: (optionId) =>
-                              _postService.vote(post.id, optionId),
+                          onVote: (optionId) => castPostVote(
+                            context,
+                            post: post,
+                            optionId: optionId,
+                          ),
                         ),
                       ),
                     Padding(
@@ -325,7 +386,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       child: Row(
                         children: [
                           InkWell(
-                            onTap: () => _postService.toggleLike(post.id),
+                            onTap: () => togglePostLike(context, post: post),
                             splashFactory: NoSplash.splashFactory,
                             borderRadius: BorderRadius.circular(8),
                             child: Padding(
@@ -370,7 +431,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                               ),
                               const SizedBox(width: 5),
                               Text(
-                                '${comments.length}',
+                                '${snapshot.hasData ? comments.length : post.commentCount}',
                                 style: TextStyle(
                                   fontFamily: 'Pretendard',
                                   fontSize: 13,
@@ -443,7 +504,10 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                       ...comments.map(
                         (c) => CommentItem(
                           comment: c,
-                          onReport: () => _report('comment', c.id),
+                          onMore: () => CommentMoreSheet.show(
+                            context,
+                            comment: c,
+                          ),
                         ),
                       ),
                     if (related.isNotEmpty) ...[

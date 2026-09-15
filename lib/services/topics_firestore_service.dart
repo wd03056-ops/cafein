@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/topic.dart';
 
-/// Firestore topics: `topics/{id}` + unique index `topic_names/{nameKey}`.
+/// Firestore `topics/{id}` + unique index `topic_names/{nameKey}`.
 class TopicsFirestoreService {
   TopicsFirestoreService._();
   static final TopicsFirestoreService instance = TopicsFirestoreService._();
@@ -24,7 +24,6 @@ class TopicsFirestoreService {
     return Topic.fromFirestore(snap.id, snap.data()!);
   }
 
-  /// Lookup only — never creates a topic document.
   Future<Topic?> findByName(String rawName) async {
     final name = normalizeTopicName(rawName);
     if (name.isEmpty) return null;
@@ -35,7 +34,6 @@ class TopicsFirestoreService {
     return getById(id);
   }
 
-  /// Popular topics by usageCount (DESC), limited.
   Future<List<Topic>> popularTopics({int limit = 10}) async {
     final snap = await _topics
         .orderBy('usageCount', descending: true)
@@ -46,7 +44,6 @@ class TopicsFirestoreService {
         .toList();
   }
 
-  /// Recently created topics.
   Future<List<Topic>> recentTopics({int limit = 10}) async {
     final snap = await _topics
         .orderBy('createdAt', descending: true)
@@ -57,7 +54,6 @@ class TopicsFirestoreService {
         .toList();
   }
 
-  /// Substring search over a capped popular set (Firestore has no full-text).
   Future<List<Topic>> searchTopics(String query, {int limit = 12}) async {
     final q = normalizeTopicName(query).toLowerCase();
     if (q.isEmpty) return popularTopics(limit: limit);
@@ -68,7 +64,6 @@ class TopicsFirestoreService {
         .take(limit)
         .toList();
 
-    // Exact / prefix matches from name index when pool missed them.
     if (matched.every((t) => topicNameKey(t.name) != topicNameKey(query))) {
       final keySnap = await _topicNames.doc(topicNameKey(query)).get();
       if (keySnap.exists) {
@@ -84,7 +79,7 @@ class TopicsFirestoreService {
     return matched.take(limit).toList();
   }
 
-  /// Get existing topic or create one with usageCount 0 (no increment yet).
+  /// Get or create topic (usageCount starts at 0; increment on post success).
   Future<Topic> ensureTopic(String rawName) async {
     final name = normalizeTopicName(rawName);
     if (name.isEmpty) {
@@ -108,7 +103,6 @@ class TopicsFirestoreService {
           if (topicSnap.exists && topicSnap.data() != null) {
             return Topic.fromFirestore(topicSnap.id, topicSnap.data()!);
           }
-          // Repair orphaned index.
           tx.set(topicRef, {
             'name': name,
             'nameKey': key,
@@ -149,7 +143,6 @@ class TopicsFirestoreService {
     }, SetOptions(merge: true));
   }
 
-  /// Decrements usage but never below zero.
   Future<void> decrementUsage(String topicId, {int by = 1}) async {
     final id = topicId.trim();
     if (id.isEmpty || by <= 0) return;

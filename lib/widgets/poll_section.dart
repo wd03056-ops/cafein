@@ -55,7 +55,10 @@ class PollSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.xs),
             child: Text(
-              '총 $total표 · 다른 선택지를 누르면 투표를 바꿀 수 있어요',
+              poll.hasVoted &&
+                      poll.options.any((o) => o.selectedByMe)
+                  ? '총 $total명 참여 · 다른 선택지를 누르면 투표를 바꿀 수 있어요'
+                  : '총 $total명 참여',
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 12,

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
+import '../services/block_firestore_service.dart';
+import '../services/like_helper.dart';
+import '../services/poll_vote_helper.dart';
 import '../services/post_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
@@ -30,6 +33,8 @@ class _SearchScreenState extends State<SearchScreen> {
     _query = widget.initialQuery?.trim() ?? '';
     _controller.text = _query;
     _postService.addListener(_refresh);
+    BlockFirestoreService.instance.addListener(_refresh);
+    BlockFirestoreService.instance.ensureLoaded();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_query.isEmpty) _focusNode.requestFocus();
     });
@@ -44,12 +49,17 @@ class _SearchScreenState extends State<SearchScreen> {
     _controller.dispose();
     _focusNode.dispose();
     _postService.removeListener(_refresh);
+    BlockFirestoreService.instance.removeListener(_refresh);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = _query.isEmpty ? const [] : _postService.search(_query);
+    final raw = _query.isEmpty ? const [] : _postService.search(_query);
+    final results = BlockFirestoreService.instance.filterByAuthorId(
+      raw,
+      (p) => p.authorId,
+    );
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -126,7 +136,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         );
                       },
-                      onLike: () => _postService.toggleLike(post.id),
+                      onLike: () => togglePostLike(context, post: post),
                       onMore: () => PostMoreSheet.show(context, post: post),
                       onTopicTap: (topic) {
                         Navigator.of(context).push(
@@ -138,8 +148,11 @@ class _SearchScreenState extends State<SearchScreen> {
                           ),
                         );
                       },
-                      onVote: (optionId) =>
-                          _postService.vote(post.id, optionId),
+                      onVote: (optionId) => castPostVote(
+                        context,
+                        post: post,
+                        optionId: optionId,
+                      ),
                     );
                   },
                 ),

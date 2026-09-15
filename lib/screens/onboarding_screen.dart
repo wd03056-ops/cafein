@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/nickname_validator.dart';
 import '../services/auth_service.dart';
@@ -22,6 +23,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String _selectedExperience = '3개월 이상';
   String? _nicknameErrorText;
   bool _submitting = false;
+  bool _agreedTerms = false;
+  bool _agreedPrivacy = false;
+
+  static const _privacyPolicyUrl =
+      'https://giddy-gaura-998.notion.site/3daad28bec5c801f981de11846a8501a';
+  static const _termsOfServiceUrl =
+      'https://giddy-gaura-998.notion.site/3daad28bec5c80f1bcb4ce10bda82c99';
 
   static const List<String> _experienceOptions = [
     '1개월 미만',
@@ -38,6 +46,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
+  Future<void> _openUrl(String urlString) async {
+    final url = Uri.parse(urlString);
+    final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('링크를 열 수 없어요.')),
+      );
+    }
+  }
+
   bool _validateNicknameFormat(String nickname) {
     final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
     final error = nicknameValidationError(cleaned);
@@ -47,6 +65,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _completeOnboarding() async {
     if (_submitting) return;
+
+    if (!_agreedTerms || !_agreedPrivacy) {
+      setState(
+        () => _nicknameErrorText = '이용약관과 개인정보처리방침에 동의해 주세요.',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이용약관과 개인정보처리방침에 동의해 주세요.')),
+      );
+      return;
+    }
 
     final sanitizedNickname =
         _nicknameController.text.replaceAll(RegExp(r'\s+'), '').trim();
@@ -309,7 +337,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 28),
+              _ConsentRow(
+                value: _agreedTerms,
+                label: '이용약관 동의 (필수)',
+                onChanged: (v) => setState(() => _agreedTerms = v ?? false),
+                onOpen: () => _openUrl(_termsOfServiceUrl),
+              ),
+              _ConsentRow(
+                value: _agreedPrivacy,
+                label: '개인정보처리방침 동의 (필수)',
+                onChanged: (v) => setState(() => _agreedPrivacy = v ?? false),
+                onOpen: () => _openUrl(_privacyPolicyUrl),
+              ),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -427,6 +468,62 @@ class _ExperienceChip extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ConsentRow extends StatelessWidget {
+  const _ConsentRow({
+    required this.value,
+    required this.label,
+    required this.onChanged,
+    required this.onOpen,
+  });
+
+  final bool value;
+  final String label;
+  final ValueChanged<bool?> onChanged;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: onChanged,
+            activeColor: colors.onSurface,
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(!value),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  color: colors.onSurface,
+                ),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onOpen,
+            child: Text(
+              '보기',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                color: colors.muted,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

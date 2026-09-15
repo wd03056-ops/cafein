@@ -57,7 +57,10 @@ class _WritePostScreenState extends State<WritePostScreen> {
     if (editId == null) return;
 
     final post = PostService.instance.getById(editId);
-    if (post == null || !PostService.instance.isMyPost(editId)) return;
+    if (post == null ||
+        !PostService.instance.isMyPost(editId, post: post)) {
+      return;
+    }
 
     _nickname = post.author;
     _contentController.text = post.content;
@@ -650,6 +653,8 @@ class _WritePostScreenState extends State<WritePostScreen> {
           content: content,
           topicName: _selectedTopic,
           clearTopic: _selectedTopic == null,
+          poll: poll,
+          setPollIfMissing: _showPoll && poll != null,
         );
         final withPoll = updated.copyWith(
           poll: poll,
@@ -683,47 +688,45 @@ class _WritePostScreenState extends State<WritePostScreen> {
     }
 
     final authorId = AuthService.instance.kakaoUserId;
-    if (authorId != null && authorId.isNotEmpty) {
-      try {
-        final remote = await PostsFirestoreService.instance.createPost(
-          content: content,
-          authorId: authorId,
-          authorNickname: _nickname,
-          experience: AuthService.instance.experience,
-          cafeType: AuthService.instance.cafeType,
-          topicName: _selectedTopic,
-        );
-        final withPoll = remote.copyWith(poll: poll);
-        PostService.instance.markAsMyPost(withPoll.id);
-        PostService.instance.upsertRemotePost(withPoll);
-        if (!mounted) return;
-        setState(() => _submitting = false);
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => PostDetailScreen(post: withPoll),
-          ),
-        );
-        return;
-      } catch (e) {
-        debugPrint('Firestore 글 저장 실패, 로컬만 유지: $e');
-      }
+    if (authorId == null ||
+        authorId.isEmpty ||
+        !AuthService.instance.canWriteContent) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카카오 로그인과 프로필 설정을 완료해 주세요.')),
+      );
+      return;
     }
 
-    final post = PostService.instance.addPost(
-      content: content,
-      poll: poll,
-      tags: _selectedTopic == null ? const [] : [_selectedTopic!],
-      author: _nickname,
-      experience: AuthService.instance.experience,
-      cafeType: AuthService.instance.cafeType,
-    );
-    if (!mounted) return;
-    setState(() => _submitting = false);
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) => PostDetailScreen(post: post),
-      ),
-    );
+    try {
+      final remote = await PostsFirestoreService.instance.createPost(
+        content: content,
+        authorId: authorId,
+        authorNickname: _nickname,
+        experience: AuthService.instance.experience,
+        cafeType: AuthService.instance.cafeType,
+        topicName: _selectedTopic,
+        poll: poll,
+      );
+      final withPoll = remote.copyWith(poll: poll);
+      PostService.instance.markAsMyPost(withPoll.id);
+      PostService.instance.upsertRemotePost(withPoll);
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => PostDetailScreen(post: withPoll),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Firestore 글 저장 실패: $e');
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('글을 저장하지 못했어요. 다시 시도해주세요.')),
+      );
+    }
   }
 
   Widget _buildSelectedTopic() {

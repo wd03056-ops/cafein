@@ -118,18 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Image.asset(
-                  'assets/images/cafeinlogo.png',
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.high,
-                ),
-              ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               Text(
                 '카페인에 오신 걸\n환영해요',
                 style: TextStyle(
