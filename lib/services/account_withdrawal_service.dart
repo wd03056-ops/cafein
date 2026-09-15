@@ -16,6 +16,7 @@ class AccountWithdrawalService {
   static const anonymizedNickname = '탈퇴한 사용자';
 
   Future<void> withdraw() async {
+    debugPrint('[DELETE ACCOUNT] deleteAccount started');
     AuthService.instance.requireKakaoWriter();
     final uid = AuthService.instance.kakaoUserId?.trim() ?? '';
     final nickname = AuthService.instance.nickname?.trim() ?? '';
@@ -23,57 +24,81 @@ class AccountWithdrawalService {
       throw StateError('로그인 정보가 없어요.');
     }
 
+    debugPrint('[DELETE ACCOUNT] anonymizing posts');
     await _anonymizePosts(uid);
+
+    debugPrint('[DELETE ACCOUNT] anonymizing comments');
     await _anonymizeComments(uid);
+
+    debugPrint('[DELETE ACCOUNT] deleting blocks');
     await BlockFirestoreService.instance.deleteBlocksByBlocker(uid);
 
+    debugPrint('[DELETE ACCOUNT] deleting user data');
     if (nickname.isNotEmpty) {
       try {
-        final nickDoc = await _firestore.collection('nicknames').doc(nickname).get();
+        final nickDoc =
+            await _firestore.collection('nicknames').doc(nickname).get();
         if (nickDoc.exists) {
           final owner = (nickDoc.data()?['uid'] as String?)?.trim();
           if (owner == uid) {
             await nickDoc.reference.delete();
           }
         }
-      } catch (e) {
+      } catch (e, st) {
         debugPrint('닉네임 인덱스 삭제 실패: $e');
+        debugPrint('$st');
       }
     }
 
     try {
       await _firestore.collection('users').doc(uid).delete();
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('유저 문서 삭제 실패: $e');
+      debugPrint('$st');
     }
 
+    debugPrint('[DELETE ACCOUNT] unlinking Kakao');
     try {
       await UserApi.instance.unlink();
-    } catch (e) {
+      debugPrint('[DELETE ACCOUNT] Kakao unlink success');
+    } catch (e, st) {
       debugPrint('카카오 unlink 실패, logout으로 대체: $e');
+      debugPrint('$st');
       try {
         await UserApi.instance.logout();
-      } catch (e2) {
+      } catch (e2, st2) {
         debugPrint('카카오 로그아웃 실패: $e2');
+        debugPrint('$st2');
       }
     }
 
+    // Always clear device token store so auto-login cannot restore the old session.
+    await AuthService.instance.clearKakaoTokenStore();
+
+    debugPrint('[DELETE ACCOUNT] signing out');
     BlockFirestoreService.instance.clearCache();
-    AuthService.instance.clearSession();
+    // Must remove SharedPreferences profile — clearSession alone keeps it and
+    // signInWithKakao would restore the old nickname on next login.
+    await AuthService.instance.clearAccountAfterWithdrawal(uid);
+    debugPrint('[DELETE ACCOUNT] completed');
   }
 
+  /// Anonymize display fields only. Keeps [authorId] for moderation.
+  /// Loads matching docs once (no cursor loop) so we never re-query the same
+  /// `authorId` set forever after nickname-only updates.
   Future<void> _anonymizePosts(String uid) async {
     try {
-      QuerySnapshot<Map<String, dynamic>> page;
-      do {
-        page = await _firestore
-            .collection('posts')
-            .where('authorId', isEqualTo: uid)
-            .limit(100)
-            .get();
-        if (page.docs.isEmpty) break;
+      final snap = await _firestore
+          .collection('posts')
+          .where('authorId', isEqualTo: uid)
+          .get();
+      debugPrint(
+        '[DELETE ACCOUNT] posts to anonymize=${snap.docs.length}',
+      );
+      for (var i = 0; i < snap.docs.length; i += 400) {
+        final chunk = snap.docs.skip(i).take(400);
         final batch = _firestore.batch();
-        for (final doc in page.docs) {
+        for (final doc in chunk) {
           batch.update(doc.reference, {
             'authorNickname': anonymizedNickname,
             'nickname': anonymizedNickname,
@@ -83,25 +108,27 @@ class AccountWithdrawalService {
           });
         }
         await batch.commit();
-      } while (page.docs.isNotEmpty);
-    } catch (e) {
+      }
+    } catch (e, st) {
       debugPrint('게시글 익명화 실패: $e');
+      debugPrint('$st');
+      rethrow;
     }
   }
 
   Future<void> _anonymizeComments(String uid) async {
-    // Comments live under posts; query collection group if available.
     try {
-      QuerySnapshot<Map<String, dynamic>> page;
-      do {
-        page = await _firestore
-            .collectionGroup('comments')
-            .where('authorId', isEqualTo: uid)
-            .limit(100)
-            .get();
-        if (page.docs.isEmpty) break;
+      final snap = await _firestore
+          .collectionGroup('comments')
+          .where('authorId', isEqualTo: uid)
+          .get();
+      debugPrint(
+        '[DELETE ACCOUNT] comments to anonymize=${snap.docs.length}',
+      );
+      for (var i = 0; i < snap.docs.length; i += 400) {
+        final chunk = snap.docs.skip(i).take(400);
         final batch = _firestore.batch();
-        for (final doc in page.docs) {
+        for (final doc in chunk) {
           batch.update(doc.reference, {
             'authorNickname': anonymizedNickname,
             'authorProfileImage': '',
@@ -110,9 +137,11 @@ class AccountWithdrawalService {
           });
         }
         await batch.commit();
-      } while (page.docs.isNotEmpty);
-    } catch (e) {
-      debugPrint('댓글 익명화 실패(컬렉션 그룹 인덱스 필요할 수 있음): $e');
+      }
+    } catch (e, st) {
+      debugPrint('댓글 익명화 실패(컬렉션 그룹 인덱스가 필요할 수 있음): $e');
+      debugPrint('$st');
+      // Comments anonymization should not block account deletion.
     }
   }
 }

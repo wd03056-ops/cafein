@@ -21,9 +21,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   static const _pushPrefKey = 'cafein_push_enabled';
   static const _privacyPolicyUrl =
-      'https://giddy-gaura-998.notion.site/3daad28bec5c801f981de11846a8501a';
+      'https://cafein-five.vercel.app/privacy/';
   static const _termsOfServiceUrl =
-      'https://giddy-gaura-998.notion.site/3daad28bec5c80f1bcb4ce10bda82c99';
+      'https://cafein-five.vercel.app/terms/';
 
   bool _pushEnabled = true;
   bool _loadingPrefs = true;
@@ -104,13 +104,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _withdrawAccount() async {
+    debugPrint('[DELETE ACCOUNT] button clicked');
+
     if (!AuthService.instance.canWriteContent) {
+      debugPrint('[DELETE ACCOUNT] blocked: not logged in / onboarding incomplete');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('로그인 후 이용할 수 있어요.')),
       );
       return;
     }
 
+    debugPrint('[DELETE ACCOUNT] confirmation');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -138,23 +143,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted) {
+      debugPrint('[DELETE ACCOUNT] confirmation cancelled');
+      return;
+    }
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('탈퇴 처리 중…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
 
     try {
       await AccountWithdrawalService.instance.withdraw();
       if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // loading
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
         (route) => false,
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('탈퇴가 완료되었어요.')),
-      );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('회원 탈퇴 실패: $e');
+      debugPrint('$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('탈퇴 처리에 실패했어요. 다시 시도해 주세요.')),
+      Navigator.of(context, rootNavigator: true).pop(); // loading
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('탈퇴 실패'),
+          content: const Text(
+            '회원 탈퇴에 실패했습니다.\n잠시 후 다시 시도해 주세요.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
       );
     }
   }
@@ -224,7 +267,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const _SectionLabel('계정'),
             _NavRow(
               title: '회원 탈퇴',
-              onTap: _withdrawAccount,
+              onTap: () {
+                // Explicit callback so the async Future is started reliably.
+                _withdrawAccount();
+              },
             ),
           ],
         ],

@@ -225,6 +225,29 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Account withdrawal: wipe session + this Kakao user's persisted onboarding
+  /// profile so the next login starts as a new signup (onboarding required).
+  /// Does not change Kakao login APIs — only local cache.
+  Future<void> clearAccountAfterWithdrawal(String kakaoUserId) async {
+    final id = kakaoUserId.trim();
+    if (id.isNotEmpty) {
+      _profilesByKakaoId.remove(id);
+      await _persistProfiles();
+      debugPrint('[DELETE ACCOUNT] removed local profile for withdrawn user');
+    }
+    clearSession();
+  }
+
+  /// Drop any leftover Kakao OAuth tokens from the device token store.
+  Future<void> clearKakaoTokenStore() async {
+    try {
+      await TokenManagerProvider.instance.manager.clear();
+      debugPrint('[DELETE ACCOUNT] Kakao token store cleared');
+    } catch (e) {
+      debugPrint('카카오 토큰 저장소 삭제 실패: $e');
+    }
+  }
+
   bool isNicknameUsedLocally(String nickname, {String? excludeUid}) {
     final cleaned = nickname.replaceAll(RegExp(r'\s+'), '').trim();
     if (cleaned.isEmpty) return false;

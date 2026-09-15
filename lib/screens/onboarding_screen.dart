@@ -27,9 +27,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _agreedPrivacy = false;
 
   static const _privacyPolicyUrl =
-      'https://giddy-gaura-998.notion.site/3daad28bec5c801f981de11846a8501a';
+      'https://cafein-five.vercel.app/privacy/';
   static const _termsOfServiceUrl =
-      'https://giddy-gaura-998.notion.site/3daad28bec5c80f1bcb4ce10bda82c99';
+      'https://cafein-five.vercel.app/terms/';
 
   static const List<String> _experienceOptions = [
     '1개월 미만',
