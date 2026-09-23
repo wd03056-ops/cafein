@@ -35,8 +35,11 @@ class Post {
   /// Author profile image URL from Kakao / Firestore.
   final String? authorProfileImage;
 
-  /// Kakao / Firestore author uid.
+  /// Kakao / Firestore author uid (or `deleted_*` after withdrawal).
   final String? authorId;
+
+  /// True when the author withdrew; never resolve live `users/{authorId}`.
+  final bool authorWithdrawn;
 
   /// Comment count from server when comments are not loaded locally.
   final int? remoteCommentCount;
@@ -59,8 +62,11 @@ class Post {
     this.title,
     this.authorProfileImage,
     this.authorId,
+    this.authorWithdrawn = false,
     this.remoteCommentCount,
-  })  : author = author ?? AppConstants.nicknameFor('post:$id'),
+  })  : author = authorWithdrawn
+            ? AppConstants.withdrawnAuthorNickname
+            : (author ?? AppConstants.nicknameFor('post:$id')),
         comments = comments ?? [],
         experience = experience ?? AppConstants.experienceFor('post:$id'),
         cafeType = cafeType ?? AppConstants.cafeTypeFor('post:$id');
@@ -85,11 +91,16 @@ class Post {
         (data['body'] as String?)?.trim() ??
         '';
     final title = (data['title'] as String?)?.trim();
-    final author = (data['nickname'] as String?)?.trim() ??
-        (data['author'] as String?)?.trim() ??
-        (data['authorNickname'] as String?)?.trim();
-    final profileImage = (data['authorProfileImage'] as String?)?.trim() ??
-        (data['profileImage'] as String?)?.trim();
+    final authorWithdrawn = data['authorWithdrawn'] == true;
+    final author = authorWithdrawn
+        ? AppConstants.withdrawnAuthorNickname
+        : ((data['nickname'] as String?)?.trim() ??
+            (data['author'] as String?)?.trim() ??
+            (data['authorNickname'] as String?)?.trim());
+    final profileImage = authorWithdrawn
+        ? null
+        : ((data['authorProfileImage'] as String?)?.trim() ??
+            (data['profileImage'] as String?)?.trim());
     final authorId = (data['authorId'] as String?)?.trim();
     final topicId = (data['topicId'] as String?)?.trim();
     final topicName = (data['topicName'] as String?)?.trim();
@@ -123,6 +134,7 @@ class Post {
       author: author,
       authorProfileImage: profileImage,
       authorId: authorId,
+      authorWithdrawn: authorWithdrawn,
       likeCount: likeCount,
       tags: tags,
       topicId: topicId,
@@ -153,7 +165,9 @@ class Post {
     String? cafeType,
     String? title,
     String? authorProfileImage,
+    bool clearAuthorProfileImage = false,
     String? authorId,
+    bool? authorWithdrawn,
     int? remoteCommentCount,
   }) {
     return Post(
@@ -172,8 +186,11 @@ class Post {
       experience: experience ?? this.experience,
       cafeType: cafeType ?? this.cafeType,
       title: title ?? this.title,
-      authorProfileImage: authorProfileImage ?? this.authorProfileImage,
+      authorProfileImage: clearAuthorProfileImage
+          ? null
+          : (authorProfileImage ?? this.authorProfileImage),
       authorId: authorId ?? this.authorId,
+      authorWithdrawn: authorWithdrawn ?? this.authorWithdrawn,
       remoteCommentCount: remoteCommentCount ?? this.remoteCommentCount,
     );
   }

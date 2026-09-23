@@ -105,6 +105,37 @@ class BlockFirestoreService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Blocks created by the current user (newest first when timestamps exist).
+  Future<List<BlockedUserEntry>> listMyBlocks() async {
+    AuthService.instance.requireKakaoWriter();
+    final blockerId = AuthService.instance.kakaoUserId?.trim() ?? '';
+    if (blockerId.isEmpty) return const [];
+
+    final snap = await _blocks.where('blockerId', isEqualTo: blockerId).get();
+    final entries = <BlockedUserEntry>[];
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final blocked =
+          (data['blockedUserId'] as String?)?.trim() ?? '';
+      if (blocked.isEmpty) continue;
+      DateTime? createdAt;
+      final raw = data['createdAt'];
+      if (raw is Timestamp) createdAt = raw.toDate();
+      entries.add(
+        BlockedUserEntry(
+          blockedUserId: blocked,
+          createdAt: createdAt,
+        ),
+      );
+    }
+    entries.sort((a, b) {
+      final at = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bt = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bt.compareTo(at);
+    });
+    return entries;
+  }
+
   /// Delete all blocks created by [blockerId] (account withdrawal).
   Future<void> deleteBlocksByBlocker(String blockerId) async {
     final id = blockerId.trim();
@@ -124,4 +155,14 @@ class BlockFirestoreService extends ChangeNotifier {
       debugPrint('차단 기록 삭제 실패: $e');
     }
   }
+}
+
+class BlockedUserEntry {
+  const BlockedUserEntry({
+    required this.blockedUserId,
+    this.createdAt,
+  });
+
+  final String blockedUserId;
+  final DateTime? createdAt;
 }

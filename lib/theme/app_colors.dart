@@ -33,4 +33,11 @@ extension CafeinColors on ColorScheme {
   Color get kakaoYellowDisabled => const Color(0xFFF5E99A);
 
   Color get kakaoInk => const Color(0xFF191919);
+
+  /// Topic label accent (not brown — cool blue for hierarchy only).
+  Color get topicAccent =>
+      brightness == Brightness.dark ? const Color(0xFF8BB4F0) : const Color(0xFF2F6FED);
+
+  /// Secondary body / supporting text (stronger than [muted]).
+  Color get secondaryText => onSurfaceVariant;
 }

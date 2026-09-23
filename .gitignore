@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Play upload signing (never commit secrets or keystores)
+**/key.properties
+**/*.jks
+**/*.keystore
+
+# Cloud Functions local params (ADMIN_UIDS etc.)
+functions/.env
+functions/.env.local

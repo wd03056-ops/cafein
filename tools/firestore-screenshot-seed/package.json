@@ -1,0 +1,15 @@
+{
+  "name": "cafein-firestore-screenshot-seed",
+  "private": true,
+  "description": "One-shot Play Store screenshot seed for CAFEIN Firestore (manual only)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "seed": "node seed.js",
+    "delete": "node delete.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

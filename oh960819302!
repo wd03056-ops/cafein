@@ -1,0 +1,20 @@
+# Copy to android/key.properties and fill in real values.
+# Do NOT commit key.properties or your .jks / .keystore file.
+#
+# storeFile is relative to android/app/  (examples below).
+#   ../upload-keystore.jks     → file at android/upload-keystore.jks
+#   upload-keystore.jks        → file at android/app/upload-keystore.jks
+#
+# Create an upload keystore once (run from repo root or android/):
+#
+#   keytool -genkey -v -keystore android/upload-keystore.jks ^
+#     -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 ^
+#     -alias upload
+#
+# Then set the passwords/alias you chose below.
+# Keep a secure offline backup of the .jks — losing it blocks Play updates.
+
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=../upload-keystore.jks

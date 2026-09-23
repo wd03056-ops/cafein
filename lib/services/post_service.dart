@@ -1,21 +1,23 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/constants.dart';
-import '../data/mock_posts.dart';
 import '../models/comment.dart';
 import '../models/poll.dart';
 import '../models/post.dart';
 import '../models/topic.dart';
 import 'auth_service.dart';
+import 'posts_firestore_service.dart';
 
-/// Post / like / poll / comment / topic in-memory logic.
-/// Currently mock only. Swap internals later; keep this API.
+/// Local optimistic / session cache for posts (likes, votes, edits).
+///
+/// Home / search / topic feeds load from Firestore via
+/// [PostsFirestoreService]. This service no longer seeds mock posts.
 class PostService extends ChangeNotifier {
-  PostService._() : _posts = createMockPosts();
+  PostService._();
 
   static final PostService instance = PostService._();
 
-  final List<Post> _posts;
+  final List<Post> _posts = [];
   final Set<String> _myPostIds = {};
 
   List<Post> get posts => List.unmodifiable(_posts);
@@ -76,14 +78,63 @@ class PostService extends ChangeNotifier {
     }
   }
 
+  /// Soft-remap author nicknames after a profile rename.
+  void remapAuthorNickname(String authorId, String nickname) {
+    final uid = authorId.trim();
+    final nick = nickname.trim();
+    if (uid.isEmpty || nick.isEmpty) return;
+    var changed = false;
+    for (var i = 0; i < _posts.length; i++) {
+      final p = _posts[i];
+      if (p.authorWithdrawn) continue;
+      if (p.authorId?.trim() == uid && p.author != nick) {
+        _posts[i] = p.copyWith(author: nick);
+        changed = true;
+      }
+    }
+    if (changed) notifyListeners();
+  }
+
+  /// After withdrawal CF: remap local posts from Kakao uid → deleted id.
+  void applyAuthorWithdrawalInCache({
+    required String oldAuthorId,
+    required String deletedAuthorId,
+    required String displayNickname,
+  }) {
+    final oldId = oldAuthorId.trim();
+    final deletedId = deletedAuthorId.trim();
+    final nick = displayNickname.trim();
+    if (oldId.isEmpty || deletedId.isEmpty || nick.isEmpty) return;
+    var changed = false;
+    for (var i = 0; i < _posts.length; i++) {
+      final p = _posts[i];
+      if (p.authorId?.trim() != oldId) continue;
+      _posts[i] = p.copyWith(
+        authorId: deletedId,
+        author: nick,
+        authorWithdrawn: true,
+        clearAuthorProfileImage: true,
+      );
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   /// Merge a remote (Firestore) post into the local cache for detail/actions.
+  /// Incoming likeCount / likedByMe / poll / commentCount always win so a
+  /// pull-to-refresh cannot be masked by stale local optimistic fields.
   void upsertRemotePost(Post post) {
     final index = _posts.indexWhere((p) => p.id == post.id);
+    final incomingPoll = post.poll;
     if (index >= 0) {
       final local = _posts[index];
-      _posts[index] = post.copyWith(
+      // Never keep local.poll when server sent a poll — voteCounts live on
+      // posts/{id}.poll and must be replaced on force refresh.
+      final next = post.copyWith(
         comments: local.comments.isNotEmpty ? local.comments : post.comments,
-        poll: post.poll ?? local.poll,
+        clearPoll: incomingPoll == null,
+        // Clone so later in-place vote mutations cannot corrupt cache.
+        poll: incomingPoll?.clone(),
         authorProfileImage:
             post.authorProfileImage ?? local.authorProfileImage,
         authorId: post.authorId ?? local.authorId,
@@ -91,23 +142,55 @@ class PostService extends ChangeNotifier {
         topicId: post.topicId ?? local.topicId,
         topicName: post.topicName ?? local.topicName,
         tags: post.tags.isNotEmpty ? post.tags : local.tags,
+        likeCount: post.likeCount,
+        likedByMe: post.likedByMe,
+        remoteCommentCount:
+            post.remoteCommentCount ?? local.remoteCommentCount,
+        experience: post.experience ?? local.experience,
+        cafeType: post.cafeType ?? local.cafeType,
       );
+      _posts[index] = next;
+      if (incomingPoll != null) {
+        debugPrint(
+          '[POLL_REFRESH_DEBUG] poll cache updated postId=${next.id} '
+          'votes=${next.poll?.options.map((o) => o.votes).toList()}',
+        );
+        debugPrint('[POLL_REFRESH_DEBUG] UI poll updated');
+      }
     } else {
-      _posts.add(post);
+      _posts.add(
+        incomingPoll == null
+            ? post
+            : post.copyWith(poll: incomingPoll.clone()),
+      );
+      if (incomingPoll != null) {
+        debugPrint(
+          '[POLL_REFRESH_DEBUG] poll cache updated postId=${post.id} '
+          'votes=${incomingPoll.options.map((o) => o.votes).toList()}',
+        );
+        debugPrint('[POLL_REFRESH_DEBUG] UI poll updated');
+      }
     }
+    PostsFirestoreService.instance.applyLocalPostUpdate(
+      index >= 0 ? _posts[index] : _posts.last,
+    );
     notifyListeners();
   }
 
+  /// Filter the in-memory session cache only.
+  /// UI search must use [PostsFirestoreService.searchPosts].
   List<Post> search(String query) {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return [];
-    return _posts.where((p) {
-      final inContent = p.content.toLowerCase().contains(q);
-      final inTags = p.tags.any((t) => t.toLowerCase().contains(q));
-      final inPoll = p.poll?.question.toLowerCase().contains(q) ?? false;
-      return inContent || inTags || inPoll;
-    }).toList()
+    return _posts.where((p) => _matchesSearchQuery(p, q)).toList()
       ..sort((a, b) => b.likeCount.compareTo(a.likeCount));
+  }
+
+  static bool _matchesSearchQuery(Post p, String q) {
+    final inContent = p.content.toLowerCase().contains(q);
+    final inTags = p.tags.any((t) => t.toLowerCase().contains(q));
+    final inPoll = p.poll?.question.toLowerCase().contains(q) ?? false;
+    return inContent || inTags || inPoll;
   }
 
   List<Post> relatedPosts(Post post, {int limit = 8}) {
@@ -409,6 +492,7 @@ class PostService extends ChangeNotifier {
     final before = _posts.length;
     _posts.removeWhere((p) => p.id == postId);
     _myPostIds.remove(postId);
+    PostsFirestoreService.instance.invalidatePost(postId);
     if (_posts.length == before) return false;
     notifyListeners();
     return true;

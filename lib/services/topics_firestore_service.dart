@@ -34,23 +34,51 @@ class TopicsFirestoreService {
     return getById(id);
   }
 
+  List<Topic>? _popularCache;
+  DateTime? _popularCacheAt;
+  static const _popularCacheTtl = Duration(minutes: 5);
+
+  /// Drop popular/recent pool so next read picks up server usageCount.
+  void invalidatePopularCache() {
+    _popularCache = null;
+    _popularCacheAt = null;
+  }
+
   Future<List<Topic>> popularTopics({int limit = 10}) async {
+    final capped = limit.clamp(1, 30);
+    final now = DateTime.now();
+    if (_popularCache != null &&
+        _popularCacheAt != null &&
+        now.difference(_popularCacheAt!) < _popularCacheTtl &&
+        _popularCache!.length >= capped) {
+      return _popularCache!
+          .where((t) => t.usageCount > 0)
+          .take(capped)
+          .toList();
+    }
+
+    // Server-side: only topics that currently have posts (usageCount > 0).
     final snap = await _topics
+        .where('usageCount', isGreaterThan: 0)
         .orderBy('usageCount', descending: true)
-        .limit(limit.clamp(1, 30))
+        .limit(30)
         .get();
-    return snap.docs
-        .map((d) => Topic.fromFirestore(d.id, d.data()))
-        .toList();
+    _popularCache =
+        snap.docs.map((d) => Topic.fromFirestore(d.id, d.data())).toList();
+    _popularCacheAt = now;
+    return _popularCache!.take(capped).toList();
   }
 
   Future<List<Topic>> recentTopics({int limit = 10}) async {
+    final capped = limit.clamp(1, 30);
     final snap = await _topics
         .orderBy('createdAt', descending: true)
-        .limit(limit.clamp(1, 30))
+        .limit(40)
         .get();
     return snap.docs
         .map((d) => Topic.fromFirestore(d.id, d.data()))
+        .where((t) => t.usageCount > 0)
+        .take(capped)
         .toList();
   }
 
@@ -58,7 +86,8 @@ class TopicsFirestoreService {
     final q = normalizeTopicName(query).toLowerCase();
     if (q.isEmpty) return popularTopics(limit: limit);
 
-    final pool = await popularTopics(limit: 80);
+    // Reuse cached popular pool (usageCount > 0 only).
+    final pool = await popularTopics(limit: 30);
     final matched = pool
         .where((t) => t.name.toLowerCase().contains(q))
         .take(limit)
@@ -70,7 +99,10 @@ class TopicsFirestoreService {
         final id = (keySnap.data()?['topicId'] as String?)?.trim();
         if (id != null && id.isNotEmpty) {
           final topic = await getById(id);
-          if (topic != null && !matched.any((t) => t.id == topic.id)) {
+          // Hide zero-usage topics from browse/search lists.
+          if (topic != null &&
+              topic.usageCount > 0 &&
+              !matched.any((t) => t.id == topic.id)) {
             matched.insert(0, topic);
           }
         }
@@ -132,31 +164,5 @@ class TopicsFirestoreService {
       debugPrint('ensureTopic 실패: $e');
       rethrow;
     }
-  }
-
-  Future<void> incrementUsage(String topicId, {int by = 1}) async {
-    final id = topicId.trim();
-    if (id.isEmpty || by == 0) return;
-    await _topics.doc(id).set({
-      'usageCount': FieldValue.increment(by),
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
-  Future<void> decrementUsage(String topicId, {int by = 1}) async {
-    final id = topicId.trim();
-    if (id.isEmpty || by <= 0) return;
-
-    await _firestore.runTransaction((tx) async {
-      final ref = _topics.doc(id);
-      final snap = await tx.get(ref);
-      if (!snap.exists) return;
-      final current = (snap.data()?['usageCount'] as num?)?.toInt() ?? 0;
-      final next = (current - by).clamp(0, 1 << 30);
-      tx.update(ref, {
-        'usageCount': next,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
   }
 }

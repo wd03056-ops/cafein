@@ -14,6 +14,9 @@ class Comment {
   final String? authorId;
   final String? authorProfileImage;
 
+  /// True when the author withdrew; never resolve live `users/{authorId}`.
+  final bool authorWithdrawn;
+
   Comment({
     required this.id,
     required this.postId,
@@ -22,13 +25,14 @@ class Comment {
     String? author,
     this.likeCount = 0,
     this.likedByMe = false,
-    String? experience,
-    String? cafeType,
+    this.experience,
+    this.cafeType,
     this.authorId,
     this.authorProfileImage,
-  })  : author = author ?? AppConstants.nicknameFor('comment:$id'),
-        experience = experience ?? AppConstants.experienceFor('comment:$id'),
-        cafeType = cafeType ?? AppConstants.cafeTypeFor('comment:$id');
+    this.authorWithdrawn = false,
+  }) : author = authorWithdrawn
+            ? AppConstants.withdrawnAuthorNickname
+            : (author ?? AppConstants.nicknameFor('comment:$id'));
 
   String get authorNickname => author;
 
@@ -38,9 +42,14 @@ class Comment {
     required Map<String, dynamic> data,
   }) {
     final createdAt = _parseDateTime(data['createdAt']) ?? DateTime.now();
-    final nickname = (data['authorNickname'] as String?)?.trim() ??
-        (data['nickname'] as String?)?.trim() ??
-        (data['author'] as String?)?.trim();
+    final authorWithdrawn = data['authorWithdrawn'] == true;
+    final nickname = authorWithdrawn
+        ? AppConstants.withdrawnAuthorNickname
+        : ((data['authorNickname'] as String?)?.trim() ??
+            (data['nickname'] as String?)?.trim() ??
+            (data['author'] as String?)?.trim());
+    final experienceRaw = (data['experience'] as String?)?.trim();
+    final cafeTypeRaw = (data['cafeType'] as String?)?.trim();
     return Comment(
       id: id,
       postId: postId,
@@ -48,10 +57,17 @@ class Comment {
       createdAt: createdAt,
       author: nickname,
       authorId: (data['authorId'] as String?)?.trim(),
-      authorProfileImage: (data['authorProfileImage'] as String?)?.trim() ??
-          (data['profileImage'] as String?)?.trim(),
-      experience: (data['experience'] as String?)?.trim() ?? '',
-      cafeType: (data['cafeType'] as String?)?.trim() ?? '',
+      authorProfileImage: authorWithdrawn
+          ? null
+          : ((data['authorProfileImage'] as String?)?.trim() ??
+              (data['profileImage'] as String?)?.trim()),
+      authorWithdrawn: authorWithdrawn,
+      // Empty string must stay empty (no mock fallback) so UI can hide badge.
+      experience: (experienceRaw == null || experienceRaw.isEmpty)
+          ? ''
+          : experienceRaw,
+      cafeType:
+          (cafeTypeRaw == null || cafeTypeRaw.isEmpty) ? '' : cafeTypeRaw,
       likeCount: _parseInt(data['likeCount']) ?? 0,
     );
   }
@@ -68,6 +84,8 @@ class Comment {
     String? cafeType,
     String? authorId,
     String? authorProfileImage,
+    bool clearAuthorProfileImage = false,
+    bool? authorWithdrawn,
   }) {
     return Comment(
       id: id ?? this.id,
@@ -80,7 +98,10 @@ class Comment {
       experience: experience ?? this.experience,
       cafeType: cafeType ?? this.cafeType,
       authorId: authorId ?? this.authorId,
-      authorProfileImage: authorProfileImage ?? this.authorProfileImage,
+      authorProfileImage: clearAuthorProfileImage
+          ? null
+          : (authorProfileImage ?? this.authorProfileImage),
+      authorWithdrawn: authorWithdrawn ?? this.authorWithdrawn,
     );
   }
 

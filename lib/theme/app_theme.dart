@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_typography.dart';
+
 /// Neutral SNS themes with light + dark support.
 class AppTheme {
   static const Color _error = Color(0xFFE11D48);
@@ -55,11 +57,12 @@ class AppTheme {
     final surface = scheme.surface;
     final outline = scheme.outline;
     final fill = scheme.surfaceContainerHighest;
+    final textTheme = CafeinTypography.textTheme(onSurface);
 
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      fontFamily: 'Pretendard',
+      fontFamily: CafeinTypography.fontFamily,
       colorScheme: scheme,
       scaffoldBackgroundColor: surface,
       canvasColor: surface,
@@ -77,6 +80,8 @@ class AppTheme {
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
+        // Pull title next to the back button (default leaves a large gap).
+        titleSpacing: 0,
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: surface,
@@ -90,13 +95,7 @@ class AppTheme {
           systemNavigationBarColor: surface,
           systemNavigationBarIconBrightness: statusBarIconBrightness,
         ),
-        titleTextStyle: TextStyle(
-          fontFamily: 'Pretendard',
-          color: onSurface,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
-        ),
+        titleTextStyle: CafeinTypography.screenTitle(onSurface),
         iconTheme: IconThemeData(color: onSurface, size: 24),
       ),
       tabBarTheme: TabBarThemeData(
@@ -105,16 +104,10 @@ class AppTheme {
         indicatorColor: onSurface,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: outline,
-        labelStyle: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontWeight: FontWeight.w600,
-          fontSize: 14,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontFamily: 'Pretendard',
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
-        ),
+        labelStyle: CafeinTypography.button(onSurface),
+        unselectedLabelStyle: CafeinTypography.button(
+          onSurface.withValues(alpha: 0.55),
+        ).copyWith(fontWeight: FontWeight.w500),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -133,28 +126,15 @@ class AppTheme {
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        hintStyle: TextStyle(
-          fontFamily: 'Pretendard',
-          color: onSurface.withValues(alpha: 0.35),
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
+        hintStyle: CafeinTypography.commentBody(
+          onSurface.withValues(alpha: 0.35),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: fill,
         selectedColor: onSurface,
-        labelStyle: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: onSurface,
-        ),
-        secondaryLabelStyle: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: surface,
-        ),
+        labelStyle: CafeinTypography.reaction(onSurface),
+        secondaryLabelStyle: CafeinTypography.reaction(surface),
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -177,9 +157,7 @@ class AppTheme {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return TextStyle(
-            fontFamily: 'Pretendard',
-            color: onSurface,
+          return CafeinTypography.metadata(onSurface).copyWith(
             fontSize: 11,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           );
@@ -188,6 +166,8 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: surface,
         surfaceTintColor: Colors.transparent,
+        titleTextStyle: CafeinTypography.postTitle(onSurface),
+        contentTextStyle: CafeinTypography.postBody(onSurface),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: surface,
@@ -196,57 +176,27 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: isDark ? const Color(0xFFE8E8E8) : const Color(0xFF1A1A1A),
-        contentTextStyle: TextStyle(
-          fontFamily: 'Pretendard',
-          color: isDark ? const Color(0xFF121212) : Colors.white,
+        contentTextStyle: CafeinTypography.commentBody(
+          isDark ? const Color(0xFF121212) : Colors.white,
         ),
       ),
-      textTheme: TextTheme(
-        bodyLarge: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 16,
-          height: 1.55,
-          color: onSurface,
-          fontWeight: FontWeight.w400,
-        ),
-        bodyMedium: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 16,
-          height: 1.55,
-          color: onSurface,
-          fontWeight: FontWeight.w400,
-        ),
-        titleLarge: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          color: onSurface,
-        ),
-        titleMedium: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: onSurface,
-        ),
-        labelLarge: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          color: onSurface,
-        ),
-        labelMedium: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 13,
-          fontWeight: FontWeight.w400,
-          color: onSurface,
-        ),
-        labelSmall: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 12,
-          fontWeight: FontWeight.w400,
-          color: onSurface,
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          textStyle: CafeinTypography.button(),
         ),
       ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          textStyle: CafeinTypography.button(),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          textStyle: CafeinTypography.button(),
+        ),
+      ),
+      textTheme: textTheme,
+      primaryTextTheme: textTheme,
     );
   }
 }

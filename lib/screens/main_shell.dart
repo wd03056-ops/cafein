@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../ads/ad_helper.dart';
 import '../services/auth_service.dart';
+import '../widgets/ads/cafein_banner_ad.dart';
 import 'auth_required_screen.dart';
 import 'home_screen.dart';
 import 'my_info_screen.dart';
@@ -45,14 +47,15 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: IndexedStack(
         index: _tab,
-        children: const [
-          HomeScreen(),
-          MyInfoScreen(),
+        children: [
+          HomeScreen(isActive: _tab == 0),
+          const MyInfoScreen(),
         ],
       ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (AdHelper.showBottomBannerAd) const CafeinBannerAd(),
           const Divider(height: 0.5, thickness: 0.5),
           NavigationBar(
             selectedIndex: _navIndex,

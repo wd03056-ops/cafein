@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Kakao-only client identity (no Firebase Auth).
+    // App enforces ownership in services; tighten with Custom Token later.
+
+    match /users/{userId} {
+      allow read, write: if true;
+
+      // Warning / moderation history (same open policy as parent user doc).
+      match /moderation_actions/{actionId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /topics/{topicId} {
+      allow read, write: if true;
+    }
+
+    match /topic_names/{nameKey} {
+      allow read, write: if true;
+    }
+
+    match /nicknames/{nickname} {
+      allow read, write: if true;
+    }
+
+    match /reports/{reportId} {
+      allow read: if true;
+      allow create, update: if true;
+      // Report withdrawal from the app deletes the reporter's own doc.
+      allow delete: if true;
+    }
+
+    match /blocks/{blockId} {
+      allow read, write: if true;
+    }
+
+    match /notifications/{notificationId} {
+      allow read, write: if true;
+    }
+
+    match /posts/{postId} {
+      allow read, write: if true;
+
+      match /comments/{commentId} {
+        allow read, write: if true;
+
+        match /likes/{userId} {
+          allow read, write: if true;
+        }
+      }
+
+      match /likes/{userId} {
+        allow read, write: if true;
+      }
+    }
+  }
+}

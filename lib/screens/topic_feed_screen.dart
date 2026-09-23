@@ -10,8 +10,11 @@ import '../services/posts_firestore_service.dart';
 import '../services/topics_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import '../widgets/post_list_item.dart';
+import '../widgets/post_more_sheet.dart';
 import 'post_detail_screen.dart';
+import 'write_post_screen.dart';
 
 /// Posts gathered under a topic (Firestore `topicId`).
 class TopicFeedScreen extends StatefulWidget {
@@ -151,12 +154,7 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
             ),
             child: Text(
               '게시글 $countLabel개',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-                color: colors.muted,
-              ),
+              style: CafeinTypography.reaction(colors.muted),
             ),
           ),
           Padding(
@@ -190,22 +188,14 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
                     ? Center(
                         child: Text(
                           _error!,
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 14,
-                            color: colors.muted,
-                          ),
+                          style: CafeinTypography.commentBody(colors.muted),
                         ),
                       )
                     : posts.isEmpty
                         ? Center(
                             child: Text(
                               '아직 이 주제의 이야기가 없어요.',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                color: colors.muted,
-                              ),
+                              style: CafeinTypography.commentBody(colors.muted),
                             ),
                           )
                         : ListView.separated(
@@ -219,6 +209,8 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
                             ),
                             itemBuilder: (context, index) {
                               final post = posts[index];
+                              final mine =
+                                  _postService.isMyPost(post.id, post: post);
                               return PostListItem(
                                 post: post,
                                 onTap: () {
@@ -232,6 +224,36 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
                                 },
                                 onLike: () =>
                                     togglePostLike(context, post: post),
+                                onMore: mine
+                                    ? null
+                                    : () {
+                                        _postService.upsertRemotePost(post);
+                                        PostMoreSheet.show(
+                                          context,
+                                          post: post,
+                                        );
+                                      },
+                                onEdit: mine
+                                    ? () {
+                                        _postService.upsertRemotePost(post);
+                                        Navigator.of(context).push(
+                                          MaterialPageRoute<void>(
+                                            builder: (_) => WritePostScreen(
+                                              editPostId: post.id,
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    : null,
+                                onDelete: mine
+                                    ? () {
+                                        _postService.upsertRemotePost(post);
+                                        PostMoreSheet.deleteWithConfirm(
+                                          context,
+                                          post,
+                                        );
+                                      }
+                                    : null,
                                 onTopicTap: (topic) => _openTopic(
                                   topic,
                                   topicId: post.topicId,
@@ -271,12 +293,10 @@ class _SortChip extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Text(
         label,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 14,
-          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          color: colors.onSurface,
-        ),
+        style: CafeinTypography.sortTab(
+          selected: selected,
+          color: selected ? colors.onSurface : colors.muted,
+        ).copyWith(fontSize: 16),
       ),
     );
   }

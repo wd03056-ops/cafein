@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/poll.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 
 class PollSection extends StatelessWidget {
   const PollSection({
@@ -18,21 +19,31 @@ class PollSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final total = poll.totalVotes;
+    final showResults = poll.hasVoted || total > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          poll.question,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: colors.onSurface,
-            height: 1.4,
+        if (poll.trimmedTitle != null) ...[
+          Text(
+            poll.trimmedTitle!,
+            style: CafeinTypography.pollTitle(colors.onSurface),
           ),
-        ),
-        const SizedBox(height: AppSpacing.md),
+          if (poll.question.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              poll.question,
+              style: CafeinTypography.commentBody(colors.onSurface),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.sm),
+        ] else if (poll.question.trim().isNotEmpty) ...[
+          Text(
+            poll.question,
+            style: CafeinTypography.pollTitle(colors.onSurface),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
         ...poll.options.map((option) {
           final ratio = total == 0 ? 0.0 : option.votes / total;
           final percent = (ratio * 100).round();
@@ -42,29 +53,20 @@ class PollSection extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: _VoteOptionItem(
               title: option.text,
-              percentage: poll.hasVoted ? '$percent%' : null,
+              percentage: showResults ? '$percent%' : null,
               isSelected: poll.hasVoted && selected,
-              onTap: () {
-                if (poll.hasVoted && selected) return;
-                onVote(option.id);
-              },
+              onTap: () => onVote(option.id),
             ),
           );
         }),
-        if (poll.hasVoted)
+        if (showResults)
           Padding(
-            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            padding: const EdgeInsets.only(top: AppSpacing.sm),
             child: Text(
-              poll.hasVoted &&
-                      poll.options.any((o) => o.selectedByMe)
-                  ? '총 $total명 참여 · 다른 선택지를 누르면 투표를 바꿀 수 있어요'
+              poll.hasVoted && poll.options.any((o) => o.selectedByMe)
+                  ? '총 $total명 참여 · 같은 선택지를 다시 누르면 취소할 수 있어요'
                   : '총 $total명 참여',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: colors.muted,
-              ),
+              style: CafeinTypography.metadata(colors.muted),
             ),
           ),
       ],
@@ -88,9 +90,10 @@ class _VoteOptionItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final fg = isSelected ? colors.onSurface : colors.secondaryText;
 
     return Material(
-      color: isSelected ? colors.fillStrong : colors.fill,
+      color: colors.fill,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         onTap: onTap,
@@ -101,29 +104,24 @@ class _VoteOptionItem extends StatelessWidget {
           child: Row(
             children: [
               if (isSelected) ...[
-                Icon(Icons.check, size: 16, color: colors.onSurfaceVariant),
+                Icon(Icons.check, size: 16, color: fg),
                 const SizedBox(width: AppSpacing.sm),
               ],
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 14,
-                    height: 1.35,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: colors.onSurface,
+                  style: CafeinTypography.pollOption(fg).copyWith(
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
               ),
               if (percentage != null)
                 Text(
                   percentage!,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: colors.onSurfaceVariant,
+                  style: CafeinTypography.reaction(fg).copyWith(
+                    fontWeight:
+                        isSelected ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
             ],

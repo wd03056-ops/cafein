@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 
-/// Minimal topic pill shown above post body.
+/// Topic label above post body — blue text only, no chip background.
 class TopicPill extends StatelessWidget {
   const TopicPill({
     super.key,
@@ -22,21 +23,11 @@ class TopicPill extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: colors.fill,
-            borderRadius: BorderRadius.circular(20),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Text(
             topic,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: colors.onSurfaceVariant,
-              height: 1.2,
-            ),
+            style: CafeinTypography.topic(colors.topicAccent),
           ),
         ),
       ),

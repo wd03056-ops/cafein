@@ -1,0 +1,6 @@
+# Never commit Firebase service account keys
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+*.local
+node_modules/
+MANIFEST.generated.json

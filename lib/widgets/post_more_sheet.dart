@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/post.dart';
 import '../screens/auth_required_screen.dart';
@@ -9,10 +8,12 @@ import '../services/block_firestore_service.dart';
 import '../services/post_service.dart';
 import '../services/posts_firestore_service.dart';
 import '../services/report_firestore_service.dart';
+import '../theme/app_typography.dart';
 import 'report_bottom_sheet.dart';
 import 'topic_picker_sheet.dart';
 
-/// Post overflow: share / edit / report / block / delete (owner).
+/// Post overflow: edit / report / block / delete (owner).
+/// Share is intentionally omitted until a real share flow ships.
 class PostMoreSheet {
   static Future<void> show(
     BuildContext context, {
@@ -32,36 +33,11 @@ class PostMoreSheet {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                title: Text(
-                  '공유',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    color: colors.onSurface,
-                  ),
-                ),
-                onTap: () async {
-                  Navigator.pop(sheetContext);
-                  final text = post.topic == null
-                      ? post.content
-                      : '[${post.topic}] ${post.content}';
-                  await Clipboard.setData(ClipboardData(text: text));
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('글 내용을 복사했어요.')),
-                  );
-                },
-              ),
               if (mine)
                 ListTile(
                   title: Text(
                     '수정',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.onSurface,
-                    ),
+                    style: CafeinTypography.commentBody(colors.onSurface),
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -76,11 +52,7 @@ class PostMoreSheet {
                 ListTile(
                   title: Text(
                     '주제 수정',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.onSurface,
-                    ),
+                    style: CafeinTypography.commentBody(colors.onSurface),
                   ),
                   onTap: () async {
                     Navigator.pop(sheetContext);
@@ -119,11 +91,7 @@ class PostMoreSheet {
                 ListTile(
                   title: Text(
                     '신고',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.onSurface,
-                    ),
+                    style: CafeinTypography.commentBody(colors.onSurface),
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -134,11 +102,7 @@ class PostMoreSheet {
                   ListTile(
                     title: Text(
                       '사용자 차단',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 15,
-                        color: colors.onSurface,
-                      ),
+                      style: CafeinTypography.commentBody(colors.onSurface),
                     ),
                     onTap: () {
                       Navigator.pop(sheetContext);
@@ -150,51 +114,15 @@ class PostMoreSheet {
                 ListTile(
                   title: Text(
                     '삭제',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      color: colors.error,
-                    ),
+                    style: CafeinTypography.commentBody(colors.error),
                   ),
                   onTap: () async {
                     Navigator.pop(sheetContext);
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('게시글 삭제'),
-                        content: const Text('게시글을 삭제하시겠습니까?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('취소'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: Text(
-                              '삭제',
-                              style: TextStyle(color: colors.error),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (ok != true || !context.mounted) return;
-                    try {
-                      await postsFs.deletePost(post.id);
-                      service.deletePost(post.id);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('글을 삭제했어요.')),
-                      );
-                      if (Navigator.of(context).canPop()) {
-                        Navigator.of(context).pop();
-                      }
-                    } catch (e) {
-                      debugPrint('글 삭제 실패: $e');
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('글을 삭제할 수 없어요.')),
-                      );
+                    final deleted = await deleteWithConfirm(context, post);
+                    if (deleted &&
+                        context.mounted &&
+                        Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
                     }
                   },
                 ),
@@ -204,6 +132,54 @@ class PostMoreSheet {
         );
       },
     );
+  }
+
+  /// Confirm + delete post (feed 「삭제」 button / sheet).
+  static Future<bool> deleteWithConfirm(
+    BuildContext context,
+    Post post,
+  ) async {
+    final colors = Theme.of(context).colorScheme;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('게시글 삭제'),
+        content: const Text('게시글을 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              '삭제',
+              style: TextStyle(color: colors.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return false;
+
+    final service = PostService.instance;
+    final postsFs = PostsFirestoreService.instance;
+    try {
+      await postsFs.deletePost(post.id);
+      service.deletePost(post.id);
+      if (!context.mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('글을 삭제했어요.')),
+      );
+      return true;
+    } catch (e) {
+      debugPrint('글 삭제 실패: $e');
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('글을 삭제할 수 없어요.')),
+      );
+      return false;
+    }
   }
 
   static Future<bool> _ensureWriter(BuildContext context) async {

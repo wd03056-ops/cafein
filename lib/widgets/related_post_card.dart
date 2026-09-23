@@ -4,6 +4,7 @@ import '../core/time_format.dart';
 import '../models/post.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import 'topic_pill.dart';
 import 'user_badge.dart';
 
@@ -46,33 +47,23 @@ class RelatedPostCard extends StatelessWidget {
               children: [
                 Text.rich(
                   TextSpan(
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      color: colors.onSurface,
-                      fontSize: 12,
-                      height: 1.2,
-                    ),
+                    style: CafeinTypography.metadata(colors.onSurface),
                     children: [
                       TextSpan(
                         text: post.author,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: CafeinTypography.nickname(colors.onSurface),
                       ),
                       if (showBadge)
                         TextSpan(
                           text:
                               '  ${getBadgeText(post.cafeType!, post.experience!)}',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: colors.onSurfaceVariant,
+                          style: CafeinTypography.metadata(
+                            colors.secondaryText,
                           ),
                         ),
                       TextSpan(
                         text: ' · ${formatRelativeTime(post.createdAt)}',
-                        style: TextStyle(color: colors.muted),
+                        style: CafeinTypography.metadata(colors.muted),
                       ),
                     ],
                   ),
@@ -89,22 +80,13 @@ class RelatedPostCard extends StatelessWidget {
                     preview,
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      height: 1.4,
-                      color: colors.onSurface,
-                    ),
+                    style: CafeinTypography.commentBody(colors.onSurface),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   '공감 ${post.likeCount} · 댓글 ${post.commentCount}',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    color: colors.muted,
-                  ),
+                  style: CafeinTypography.metadata(colors.muted),
                 ),
               ],
             ),

@@ -1,14 +1,22 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/constants.dart';
+import '../screens/admin_reports_screen.dart';
+import '../screens/blocked_users_screen.dart';
 import '../screens/main_shell.dart';
+import '../screens/reported_users_screen.dart';
 import '../services/account_withdrawal_service.dart';
+import '../services/admin_access.dart';
 import '../services/auth_service.dart';
+import '../services/fcm_service.dart';
+import '../services/notification_settings_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import '../widgets/cafein_back_app_bar.dart';
 
 /// App settings: notifications, version, legal, licenses.
 class SettingsScreen extends StatefulWidget {
@@ -19,16 +27,17 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  static const _pushPrefKey = 'cafein_push_enabled';
   static const _privacyPolicyUrl =
       'https://cafein-five.vercel.app/privacy/';
   static const _termsOfServiceUrl =
       'https://cafein-five.vercel.app/terms/';
 
-  bool _pushEnabled = true;
+  CafeinNotificationSettings _notif = const CafeinNotificationSettings();
   bool _loadingPrefs = true;
+  bool _osPermissionDenied = false;
   String _versionLabel = '—';
   bool _checkingUpdate = false;
+  bool _canOpenAdminUi = false;
 
   @override
   void initState() {
@@ -37,8 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final push = prefs.getBool(_pushPrefKey) ?? true;
+    final settings = await NotificationSettingsService.instance.load();
 
     String version = '1.0.0';
     try {
@@ -51,18 +59,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Keep fallback from pubspec-style default.
     }
 
+    var osDenied = false;
+    try {
+      final status = await FcmService.instance.getPermissionStatus();
+      osDenied = status == AuthorizationStatus.denied;
+    } catch (_) {}
+
+    // Refresh admin claim for Settings menu (server ADMIN_UIDS → token claim).
+    await AdminAccess.refreshAdminClaim(forceRefresh: false);
+
     if (!mounted) return;
     setState(() {
-      _pushEnabled = push;
+      _notif = settings;
       _versionLabel = version;
+      _osPermissionDenied = osDenied;
+      _canOpenAdminUi = AdminAccess.canOpenAdminUi;
       _loadingPrefs = false;
     });
   }
 
-  Future<void> _setPushEnabled(bool value) async {
-    setState(() => _pushEnabled = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_pushPrefKey, value);
+  Future<void> _setNotif({
+    bool? comment,
+    bool? like,
+  }) async {
+    final turningOn = (comment == true) || (like == true);
+    if (turningOn) {
+      final ok = await FcmService.instance.requestPermissionIfNeeded();
+      if (!mounted) return;
+      setState(() => _osPermissionDenied = !ok);
+      if (ok) {
+        await FcmService.instance.registerForUser();
+      }
+    }
+
+    await NotificationSettingsService.instance.update(
+      comment: comment,
+      like: like,
+    );
+    if (!mounted) return;
+    setState(() => _notif = NotificationSettingsService.instance.current);
   }
 
   Future<void> _checkLatestVersion() async {
@@ -98,7 +133,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       applicationName: AppConstants.appName,
       applicationVersion: _versionLabel,
-      applicationIcon: const FlutterLogo(size: 48),
+      applicationIcon: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Image.asset(
+          'assets/images/cafeinlogo.png',
+          width: 48,
+          height: 48,
+          fit: BoxFit.contain,
+        ),
+      ),
       applicationLegalese: '© Cafein',
     );
   }
@@ -207,9 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final loggedIn = AuthService.instance.hasCompletedOnboarding;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('설정'),
-      ),
+      appBar: const CafeinBackAppBar(title: '설정'),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
           AppSpacing.screenH,
@@ -218,13 +259,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
           40,
         ),
         children: [
-          const _SectionLabel('알림'),
-          _SwitchRow(
-            title: '푸시 알림',
-            value: _pushEnabled,
-            enabled: !_loadingPrefs,
-            onChanged: _setPushEnabled,
-          ),
+          const _SectionLabel('알림 설정'),
+          if (!loggedIn)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '로그인 후 알림을 설정할 수 있어요.',
+                style: CafeinTypography.commentBody(
+                  Theme.of(context).colorScheme.muted,
+                ),
+              ),
+            )
+          else ...[
+            _SwitchRow(
+              title: '댓글 알림',
+              value: _notif.comment,
+              enabled: !_loadingPrefs,
+              onChanged: (v) => _setNotif(comment: v),
+            ),
+            _SwitchRow(
+              title: '공감 알림',
+              value: _notif.like,
+              enabled: !_loadingPrefs,
+              onChanged: (v) => _setNotif(like: v),
+            ),
+            if (_osPermissionDenied)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text(
+                  '휴대폰 설정에서 알림이 차단되어 있을 수 있습니다.',
+                  style: CafeinTypography.metadata(
+                    Theme.of(context).colorScheme.muted,
+                  ),
+                ),
+              ),
+          ],
+          if (loggedIn) ...[
+            const SizedBox(height: 20),
+            const Divider(height: 0.5, thickness: 0.5),
+            const SizedBox(height: 12),
+            const _SectionLabel('안전'),
+            _NavRow(
+              title: '차단한 사용자',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const BlockedUsersScreen(),
+                  ),
+                );
+              },
+            ),
+            _NavRow(
+              title: '신고한 사용자',
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ReportedUsersScreen(),
+                  ),
+                );
+              },
+            ),
+            if (_canOpenAdminUi)
+              _NavRow(
+                title: '신고 관리 (운영)',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AdminReportsScreen(),
+                    ),
+                  );
+                },
+              ),
+          ],
           const SizedBox(height: 20),
           const Divider(height: 0.5, thickness: 0.5),
           const SizedBox(height: 12),
@@ -239,11 +345,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )
                 : Text(
                     _versionLabel,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                      color: Theme.of(context).colorScheme.muted,
+                    style: CafeinTypography.metadata(
+                      Theme.of(context).colorScheme.muted,
                     ),
                   ),
             onTap: _checkLatestVersion,
@@ -292,12 +395,7 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Text(
         text,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: colors.muted,
-        ),
+        style: CafeinTypography.nickname(colors.muted),
       ),
     );
   }
@@ -327,13 +425,8 @@ class _SwitchRow extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -0.2,
-                color: colors.onSurface,
-              ),
+              style: CafeinTypography.postBody(colors.onSurface)
+                  .copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.2),
             ),
           ),
           Switch.adaptive(
@@ -374,13 +467,8 @@ class _NavRow extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -0.2,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.postBody(colors.onSurface)
+                    .copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.2),
               ),
             ),
             if (trailing != null) ...[

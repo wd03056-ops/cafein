@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/time_format.dart';
 import '../models/post.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 import 'user_badge.dart';
 
 /// Nickname + badge · time (topic is shown separately as a pill).
@@ -24,14 +25,7 @@ class PostAuthorMeta extends StatelessWidget {
         experience != null &&
         experience.isNotEmpty;
 
-    final metaStyle = TextStyle(
-      fontFamily: 'Pretendard',
-      fontSize: 12,
-      fontWeight: FontWeight.w400,
-      letterSpacing: -0.1,
-      color: colors.muted,
-      height: 1.2,
-    );
+    final metaStyle = CafeinTypography.metadata(colors.muted);
 
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -40,14 +34,7 @@ class PostAuthorMeta extends StatelessWidget {
       children: [
         Text(
           post.author,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.2,
-            color: colors.onSurface,
-            height: 1.2,
-          ),
+          style: CafeinTypography.nickname(colors.onSurface),
         ),
         if (showBadge)
           UserBadgeWidget(

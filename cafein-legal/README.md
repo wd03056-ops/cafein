@@ -1,15 +1,22 @@
-# CAFEIN Legal / Policy Site
+# CAFEIN Legal / Organization Site
 
-Google Play 제출용 **정적** 정책·계정 삭제 안내 사이트입니다.  
+Google Play 제출용 **정적** 사이트입니다.
+
+- **조직 웹사이트** (`/`) — Play Console 조직 계정용 공식 소개
+- **개인정보처리방침** (`/privacy/`)
+- **이용약관** (`/terms/`)
+- **계정 삭제 요청** (`/account-deletion/`) — Play 계정 삭제 URL용
+
 Flutter CAFEIN 앱과 **완전히 별개**이며, 백엔드·DB·계정 삭제 API는 없습니다.
 
 ## 페이지
 
 | 경로 | 내용 |
 |------|------|
-| `/` | 계정 삭제 요청 안내 |
+| `/` | CAFEIN 공식 소개 (조직 웹사이트) |
 | `/privacy/` | 개인정보처리방침 |
 | `/terms/` | 이용약관 |
+| `/account-deletion/` | 계정 삭제 요청 안내 |
 
 ## 로컬에서 실행
 
@@ -25,6 +32,7 @@ npx --yes serve .
 - http://localhost:3000/
 - http://localhost:3000/privacy/
 - http://localhost:3000/terms/
+- http://localhost:3000/account-deletion/
 
 Python이 있다면:
 
@@ -36,6 +44,9 @@ python -m http.server 8080
 - http://localhost:8080/
 - http://localhost:8080/privacy/
 - http://localhost:8080/terms/
+- http://localhost:8080/account-deletion/
+
+빌드 단계 없음 (정적 HTML). `npx serve`로 렌더링·링크만 확인하면 됩니다.
 
 ## Vercel 배포
 
@@ -46,28 +57,43 @@ python -m http.server 8080
 3. Framework Preset: **Other** (정적 파일)
 4. Build Command: 비움 / Output: `.` (기본)
 
-배포 후 확인 URL (도메인은 Vercel이 부여):
+배포 후 확인 URL (예: 기존 배포 `cafein-five.vercel.app`):
 
-- `https://<your-project>.vercel.app/`
-- `https://<your-project>.vercel.app/privacy/`
-- `https://<your-project>.vercel.app/terms/`
+- `https://cafein-five.vercel.app/` — **조직 웹사이트**
+- `https://cafein-five.vercel.app/privacy/`
+- `https://cafein-five.vercel.app/terms/`
+- `https://cafein-five.vercel.app/account-deletion/` — **계정 삭제 URL**
 
-> `/privacy`와 `/privacy/` 모두 동작하도록 폴더형 `index.html`을 사용했습니다.
+> `/privacy`와 `/privacy/` 모두 동작하도록 폴더형 `index.html`을 사용했습니다.  
+> `vercel.json`의 `cleanUrls` / `trailingSlash` 설정을 유지합니다.
 
-## 운영 문의 이메일
+## 운영 정보 placeholder (직접 입력 필요)
 
-현재 사이트에 적용된 주소: `wd03056@gmail.com`  
-변경 시 `index.html`, `privacy/index.html`, `terms/index.html`의 mailto 링크를 함께 수정하세요.
+메인 페이지(`/`)의 **서비스 운영 정보**에 아래를 **실제 값**으로 교체하세요.  
+임의 회사명·사업자번호·주소·대표자·이메일을 만들지 마세요.
+
+| 항목 | 파일 위치 | 현재 표시 |
+|------|-----------|-----------|
+| 조직명 | `index.html` → 운영 정보 `조직명` | `[백손]` |
+| 대표/운영자 | `index.html` → 운영 정보 `대표/운영자` | `[백재윤]` |
+| 문의 이메일 (본문) | `index.html` → 운영 정보 `문의 이메일` | `[baekson777@gmail.com]` |
+| 문의 이메일 (푸터) | `index.html` → footer | `[baekson777@gmail.com]` |
+
+코드 주석 `REPLACE:` 로도 위치가 표시되어 있습니다.
+
+참고: `/privacy/`, `/terms/`, `/account-deletion/` 본문·푸터에는 기존 문의
+주소(`wd03056@gmail.com`)가 그대로 있습니다. 메인 운영 정보와 맞추려면 해당
+페이지의 mailto도 **동일 실제 이메일**로 통일하세요. (법률 본문 문구는 임의
+수정하지 말고, 연락처만 필요 시 교체)
 
 ## 법률·운영 검토가 필요한 부분
 
-각 페이지의 **TODO** 박스:
+각 법률 페이지의 **TODO** 박스(있는 경우):
 
 - 운영 주체 / 사업자 정보 / 개인정보 보호책임자
 - 개인정보 보관 기간(법령 근거)
 - 처리 위탁·국외 이전(Firebase/카카오 리전 등)
 - UGC 라이선스·면책·제재 단계의 법적 표현
-- Google Play Console에 등록할 최종 URL
 
 본 문서는 초안이며 법률 자문이 아닙니다.
 
@@ -75,8 +101,10 @@ python -m http.server 8080
 
 배포 후:
 
-1. **계정 삭제 URL** → `/` (계정 삭제 요청 페이지)
+1. **조직 웹사이트** → `/` (예: `https://cafein-five.vercel.app/`)
 2. **개인정보처리방침 URL** → `/privacy/`
-3. (필요 시) 이용약관 → `/terms/`
+3. **계정 삭제 URL** → `/account-deletion/`
+4. (필요 시) 이용약관 → `/terms/`
 
-앱 설정 화면의 Notion 링크를 이 사이트로 바꾸려면 Flutter 앱에서 별도 작업이 필요합니다. 이 프로젝트만으로는 앱을 수정하지 않습니다.
+앱 설정 화면의 링크를 이 사이트로 바꾸려면 Flutter 앱에서 별도 작업이 필요합니다.
+이 프로젝트만으로는 앱을 수정하지 않습니다.

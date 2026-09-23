@@ -6,6 +6,8 @@ import '../models/topic.dart';
 import '../services/topics_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
+import 'dismiss_keyboard_on_tap.dart';
 import 'no_underline_text_editing_controller.dart';
 
 /// Topic search / create sheet — opened via "!" on write screen.
@@ -131,7 +133,8 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
   Widget build(BuildContext context) {
     final results = _results;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final maxHeight = (screenH - bottomInset) * 0.85;
     final colors = Theme.of(context).colorScheme;
 
     return Padding(
@@ -144,7 +147,8 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
             color: colors.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             clipBehavior: Clip.antiAlias,
-            child: Column(
+            child: DismissKeyboardOnTap(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -168,13 +172,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                   ),
                   child: Text(
                     widget.title,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                      color: colors.onSurface,
-                    ),
+                    style: CafeinTypography.postTitle(colors.onSurface),
                   ),
                 ),
                 Padding(
@@ -194,22 +192,11 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                     },
                     spellCheckConfiguration:
                         const SpellCheckConfiguration.disabled(),
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                      color: colors.onSurface,
-                      decoration: TextDecoration.none,
-                      decorationThickness: 0,
-                    ),
+                    style: CafeinTypography.commentBody(colors.onSurface),
                     cursorColor: colors.onSurface,
                     decoration: InputDecoration(
                       hintText: widget.hintText,
-                      hintStyle: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 15,
-                        color: colors.mutedSoft,
-                      ),
+                      hintStyle: CafeinTypography.metadata(colors.mutedSoft),
                       prefixIcon: Icon(
                         Icons.search_rounded,
                         size: 22,
@@ -273,13 +260,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                             ],
                             Text(
                               _query.isEmpty ? '인기 주제' : '검색 결과',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.2,
-                                color: colors.muted,
-                              ),
+                              style: CafeinTypography.nickname(colors.muted),
                             ),
                           ],
                         ),
@@ -302,11 +283,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             child: Text(
                               _error!,
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                color: colors.muted,
-                              ),
+                              style: CafeinTypography.commentBody(colors.muted),
                             ),
                           )
                         else if (results.isEmpty && !_canCreateNew)
@@ -314,12 +291,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             child: Text(
                               '아직 등록된 주제가 없어요.\n검색해서 새 주제를 만들어 보세요.',
-                              style: TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 14,
-                                height: 1.5,
-                                color: colors.muted,
-                              ),
+                              style: CafeinTypography.commentBody(colors.muted),
                             ),
                           )
                         else
@@ -358,6 +330,7 @@ class _TopicPickerSheetState extends State<TopicPickerSheet> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
@@ -425,24 +398,17 @@ class _TopicChip extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
+                style: CafeinTypography.topic(fg).copyWith(
                   fontSize: 14,
                   fontWeight: weight,
                   letterSpacing: -0.2,
-                  color: fg,
                 ),
               ),
               if (showCount) ...[
                 const SizedBox(width: 6),
                 Text(
                   '$count',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: fg.withValues(alpha: 0.7),
-                  ),
+                  style: CafeinTypography.reaction(fg.withValues(alpha: 0.7)),
                 ),
               ],
             ],

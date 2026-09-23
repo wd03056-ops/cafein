@@ -5,6 +5,9 @@ class AppConstants {
   static const String emptySearchMessage =
       '아직 관련 글이 없어요. 첫 번째로 질문해보세요.';
 
+  /// Display name for posts/comments after account withdrawal.
+  static const String withdrawnAuthorNickname = '탈퇴한 사용자';
+
   /// 온보딩 근무 경력 옵션
   static const List<String> experienceOptions = [
     '1개월 미만',

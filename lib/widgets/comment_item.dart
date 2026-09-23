@@ -2,21 +2,33 @@ import 'package:flutter/material.dart';
 
 import '../core/time_format.dart';
 import '../models/comment.dart';
+import '../services/auth_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import 'user_badge.dart';
 
 class CommentItem extends StatelessWidget {
   const CommentItem({
     super.key,
     required this.comment,
-    required this.onMore,
+    this.onMore,
+    this.onEdit,
+    this.onDelete,
     this.onLike,
   });
 
   final Comment comment;
-  final VoidCallback onMore;
+  final VoidCallback? onMore;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final VoidCallback? onLike;
+
+  bool get _isMine {
+    final myId = AuthService.instance.kakaoUserId?.trim() ?? '';
+    final authorId = comment.authorId?.trim() ?? '';
+    return myId.isNotEmpty && authorId.isNotEmpty && myId == authorId;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,8 +39,7 @@ class CommentItem extends StatelessWidget {
         cafeType.isNotEmpty &&
         experience != null &&
         experience.isNotEmpty;
-    final profileUrl = comment.authorProfileImage?.trim();
-    final hasProfile = profileUrl != null && profileUrl.isNotEmpty;
+    final showOwnerActions = _isMine && (onEdit != null || onDelete != null);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -37,136 +48,139 @@ class CommentItem extends StatelessWidget {
         AppSpacing.sm,
         AppSpacing.md,
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: colors.fill,
-            backgroundImage: hasProfile ? NetworkImage(profileUrl) : null,
-            child: hasProfile
-                ? null
-                : Text(
-                    comment.author.isNotEmpty
-                        ? comment.author.characters.first
-                        : '?',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colors.onSurface,
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
                   children: [
-                    Expanded(
-                      child: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          Text(
-                            comment.authorNickname,
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              color: colors.onSurface,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 14,
-                            ),
-                          ),
-                          if (showBadge)
-                            UserBadgeWidget(
-                              cafeType: cafeType,
-                              experience: experience,
-                            ),
-                          Text(
-                            '·',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              color: colors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                          Text(
-                            formatRelativeTime(comment.createdAt),
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              color: colors.muted,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      comment.authorNickname,
+                      style: CafeinTypography.nickname(colors.onSurface),
+                    ),
+                    if (showBadge)
+                      UserBadgeWidget(
+                        cafeType: cafeType,
+                        experience: experience,
                       ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.more_horiz, size: 18),
-                      color: colors.onSurface,
-                      onPressed: onMore,
-                      tooltip: '더보기',
-                    ),
                   ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(right: AppSpacing.sm),
-                  child: Text(
-                    comment.content,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 15,
-                      height: 1.4,
-                      fontWeight: FontWeight.w400,
+              ),
+              if (showOwnerActions) ...[
+                if (onEdit != null)
+                  TextButton(
+                    onPressed: onEdit,
+                    style: TextButton.styleFrom(
+                      foregroundColor: colors.onSurfaceVariant,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      textStyle: CafeinTypography.button(),
+                    ),
+                    child: const Text('수정'),
+                  ),
+                if (onDelete != null)
+                  TextButton(
+                    onPressed: onDelete,
+                    style: TextButton.styleFrom(
+                      foregroundColor: colors.error,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      textStyle: CafeinTypography.button(colors.error),
+                    ),
+                    child: const Text('삭제'),
+                  ),
+              ] else if (onMore != null)
+                GestureDetector(
+                  onTap: onMore,
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 4, 0),
+                    child: Icon(
+                      Icons.more_horiz,
+                      size: 18,
                       color: colors.onSurface,
                     ),
                   ),
                 ),
-                if (onLike != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  InkWell(
-                    onTap: onLike,
-                    splashFactory: NoSplash.splashFactory,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 2,
-                        horizontal: 2,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            comment.likedByMe
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            size: 16,
-                            color: comment.likedByMe
-                                ? colors.error
-                                : colors.onSurface,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${comment.likeCount}',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 12,
-                              color: colors.onSurface,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
+            child: Text(
+              comment.content,
+              style: CafeinTypography.commentBody(colors.onSurface),
             ),
           ),
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            children: [
+              Text(
+                formatRelativeTime(comment.createdAt),
+                style: CafeinTypography.metadata(colors.muted),
+              ),
+              const SizedBox(width: 12),
+              _CommentLike(
+                likedByMe: comment.likedByMe,
+                likeCount: comment.likeCount,
+                onLike: onLike,
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _CommentLike extends StatelessWidget {
+  const _CommentLike({
+    required this.likedByMe,
+    required this.likeCount,
+    this.onLike,
+  });
+
+  final bool likedByMe;
+  final int likeCount;
+  final VoidCallback? onLike;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = likedByMe ? colors.error : colors.secondaryText;
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          likedByMe ? Icons.favorite : Icons.favorite_border,
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '$likeCount',
+          style: CafeinTypography.metadata(color),
+        ),
+      ],
+    );
+    if (onLike == null) return row;
+    return InkWell(
+      onTap: onLike,
+      splashFactory: NoSplash.splashFactory,
+      borderRadius: BorderRadius.circular(6),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: row,
       ),
     );
   }

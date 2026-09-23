@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/nickname_validator.dart';
 import '../services/auth_service.dart';
+import '../services/fcm_service.dart';
 import '../services/logout.dart';
 import '../services/nickname_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
 import 'main_shell.dart';
 
@@ -125,6 +129,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         cafeType: _cafeType,
         experience: _selectedExperience,
       );
+      unawaited(FcmService.instance.registerForUser());
 
       if (!mounted) return;
       if (Navigator.of(context).canPop()) {
@@ -186,33 +191,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             children: [
               Text(
                 '카페인에서 사용할\n정보를 입력해 주세요.',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.screenTitle(colors.onSurface),
               ),
               const SizedBox(height: 8),
               Text(
                 '익명으로 안전하게 활동할 수 있어요.',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: colors.muted,
-                ),
+                style: CafeinTypography.commentBody(colors.muted),
               ),
               const SizedBox(height: 32),
               Text(
                 '닉네임',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -227,25 +216,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     setState(() => _nicknameErrorText = null);
                   }
                 },
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 15,
-                  color: colors.onSurface,
-                  decoration: TextDecoration.none,
-                ),
+                style: CafeinTypography.commentBody(colors.onSurface),
                 decoration: InputDecoration(
                   hintText: '사용할 닉네임을 입력하세요 (띄어쓰기 불가)',
-                  hintStyle: TextStyle(
-                    fontFamily: 'Pretendard',
-                    color: colors.mutedSoft,
-                  ),
+                  hintStyle: CafeinTypography.metadata(colors.muted),
                   errorText: _nicknameErrorText,
-                  errorStyle: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    height: 1.4,
-                    color: colors.error,
-                  ),
+                  errorStyle: CafeinTypography.metadata(colors.error),
                   filled: true,
                   fillColor: colors.fill,
                   border: const OutlineInputBorder(
@@ -278,24 +254,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 const SizedBox(height: 6),
                 Text(
                   '※ 띄어쓰기는 자동으로 무시되며, 본명이나 유추 가능한 닉네임은 피해주세요.',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    height: 1.4,
-                    color: colors.muted,
-                  ),
+                  style: CafeinTypography.metadata(colors.muted),
                 ),
               ],
               const SizedBox(height: 28),
               Text(
                 '근무 형태',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 10),
               Row(
@@ -320,12 +285,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(height: 28),
               Text(
                 '근무 경력',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -380,13 +340,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             color: colors.surface,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           '시작하기',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: CafeinTypography.button(colors.surface),
                         ),
                 ),
               ),
@@ -425,11 +381,8 @@ class _SelectChip extends StatelessWidget {
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: selected ? colors.surface : colors.onSurface,
+            style: CafeinTypography.nickname(
+              selected ? colors.surface : colors.onSurface,
             ),
           ),
         ),
@@ -464,11 +417,10 @@ class _ExperienceChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Text(
             label,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
+            style: CafeinTypography.reaction(
+              selected ? colors.surface : colors.onSurface,
+            ).copyWith(
               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? colors.surface : colors.onSurface,
             ),
           ),
         ),
@@ -508,11 +460,7 @@ class _ConsentRow extends StatelessWidget {
               onTap: () => onChanged(!value),
               child: Text(
                 label,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
             ),
           ),
@@ -520,11 +468,7 @@ class _ConsentRow extends StatelessWidget {
             onPressed: onOpen,
             child: Text(
               '보기',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                color: colors.muted,
-              ),
+              style: CafeinTypography.button(colors.muted),
             ),
           ),
         ],

@@ -52,11 +52,14 @@ class PollOption {
 
 /// Poll attached to a post
 class Poll {
+  /// Short poll headline shown above the question when set.
+  final String? title;
   final String question;
   final List<PollOption> options;
   bool hasVoted;
 
   Poll({
+    this.title,
     required this.question,
     required this.options,
     this.hasVoted = false,
@@ -64,12 +67,21 @@ class Poll {
 
   int get totalVotes => options.fold(0, (sum, o) => o.votes + sum);
 
+  String? get trimmedTitle {
+    final t = title?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
+
   Poll copyWith({
+    String? title,
     String? question,
     List<PollOption>? options,
     bool? hasVoted,
+    bool clearTitle = false,
   }) {
     return Poll(
+      title: clearTitle ? null : (title ?? this.title),
       question: question ?? this.question,
       options: options ?? this.options,
       hasVoted: hasVoted ?? this.hasVoted,
@@ -77,6 +89,7 @@ class Poll {
   }
 
   factory Poll.fromMap(Map<String, dynamic> data) {
+    final title = (data['title'] as String?)?.trim();
     final question = (data['question'] as String?)?.trim() ?? '';
     final rawOptions = data['options'];
     final options = <PollOption>[];
@@ -95,13 +108,40 @@ class Poll {
         }
       }
     }
-    return Poll(question: question, options: options);
+    return Poll(
+      title: title == null || title.isEmpty ? null : title,
+      question: question,
+      options: options,
+    );
   }
 
-  Map<String, dynamic> toMap() => {
-        'question': question,
-        'options': options.map((o) => o.toMap()).toList(),
-      };
+  /// Deep copy so callers never share mutable option vote counts.
+  Poll clone() {
+    return Poll(
+      title: title,
+      question: question,
+      hasVoted: hasVoted,
+      options: [
+        for (final o in options)
+          PollOption(
+            id: o.id,
+            text: o.text,
+            votes: o.votes,
+            selectedByMe: o.selectedByMe,
+          ),
+      ],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    final map = <String, dynamic>{
+      'question': question,
+      'options': options.map((o) => o.toMap()).toList(),
+    };
+    final t = trimmedTitle;
+    if (t != null) map['title'] = t;
+    return map;
+  }
 
   /// Apply the current user's vote selection without mutating counts.
   Poll withMyVote(String? optionId) {

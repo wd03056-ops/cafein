@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_typography.dart';
+
 /// Report reason picker. Caller persists via [onSubmit].
 class ReportBottomSheet extends StatefulWidget {
   const ReportBottomSheet({
@@ -63,11 +65,7 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
               return ListTile(
                 title: Text(
                   reason,
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    color: colors.onSurface,
-                  ),
+                  style: CafeinTypography.commentBody(colors.onSurface),
                 ),
                 leading: Icon(
                   selected
@@ -98,12 +96,9 @@ class _ReportBottomSheetState extends State<ReportBottomSheet> {
                       colors.onSurface.withValues(alpha: 0.2),
                   minimumSize: const Size.fromHeight(48),
                 ),
-                child: const Text(
+                child: Text(
                   '신고하기',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: CafeinTypography.button(),
                 ),
               ),
             ),

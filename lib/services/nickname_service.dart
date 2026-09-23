@@ -1,6 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import 'nickname_lookup_cache.dart';
+import 'user_firestore_service.dart';
+
 /// Thrown when another user already owns the nickname.
 class NicknameTakenException implements Exception {
   @override
@@ -10,7 +13,7 @@ class NicknameTakenException implements Exception {
 String normalizeNickname(String nickname) =>
     nickname.replaceAll(RegExp(r'\s+'), '').trim();
 
-/// Nickname uniqueness via `nicknames/{nickname}` + `users/{kakaoUid}`.
+/// Nickname uniqueness via `nicknames/{nickname}` (no `users` list queries).
 class NicknameService {
   NicknameService._();
   static final NicknameService instance = NicknameService._();
@@ -23,6 +26,9 @@ class NicknameService {
   CollectionReference<Map<String, dynamic>> get _users =>
       _firestore.collection('users');
 
+  /// True if [nickname] is claimed by someone other than [excludeUid].
+  ///
+  /// Uses `nicknames/{normalized}` document get only — never lists `users`.
   Future<bool> isNicknameTaken(
     String nickname, {
     String? excludeUid,
@@ -32,22 +38,11 @@ class NicknameService {
 
     try {
       final nickDoc = await _nicknames.doc(cleaned).get();
-      if (nickDoc.exists) {
-        final owner = (nickDoc.data()?['uid'] as String?)?.trim();
-        if (owner == null || owner.isEmpty) return true;
-        if (excludeUid != null && owner == excludeUid) return false;
-        return true;
-      }
-
-      final users = await _users
-          .where('nickname', isEqualTo: cleaned)
-          .limit(2)
-          .get();
-      for (final doc in users.docs) {
-        if (excludeUid != null && doc.id == excludeUid) continue;
-        return true;
-      }
-      return false;
+      if (!nickDoc.exists) return false;
+      final owner = (nickDoc.data()?['uid'] as String?)?.trim();
+      if (owner == null || owner.isEmpty) return true;
+      if (excludeUid != null && owner == excludeUid) return false;
+      return true;
     } catch (e) {
       debugPrint('닉네임 중복 조회 실패: $e');
       rethrow;
@@ -112,5 +107,8 @@ class NicknameService {
         }
       }
     });
+
+    NicknameLookupCache.instance.put(uid, cleaned);
+    UserDocCache.instance.invalidate(uid);
   }
 }

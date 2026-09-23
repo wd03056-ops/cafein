@@ -3,8 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../core/nickname_validator.dart';
 import '../services/auth_service.dart';
+import '../services/comments_firestore_service.dart';
 import '../services/nickname_service.dart';
+import '../services/notification_inbox_service.dart';
+import '../services/post_service.dart';
+import '../services/posts_firestore_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
+import '../widgets/cafein_back_app_bar.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
 
 /// Edit nickname / cafe type / experience after onboarding.
@@ -124,6 +130,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
 
+      PostsFirestoreService.instance.remapAuthorNickname(uid, sanitizedNickname);
+      CommentsFirestoreService.instance.remapAuthorNickname(uid, sanitizedNickname);
+      PostService.instance.remapAuthorNickname(uid, sanitizedNickname);
+      NotificationInboxService.instance.remapActorNickname(
+        uid,
+        sanitizedNickname,
+      );
+
       auth.completeOnboarding(
         nickname: sanitizedNickname,
         cafeType: _cafeType,
@@ -157,9 +171,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const Text('정보 수정'),
-      ),
+      appBar: const CafeinBackAppBar(title: '정보 수정'),
       body: SafeArea(
         top: false,
         child: SingleChildScrollView(
@@ -170,12 +182,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             children: [
               Text(
                 '닉네임',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -189,25 +196,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     setState(() => _nicknameErrorText = null);
                   }
                 },
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 15,
-                  color: colors.onSurface,
-                  decoration: TextDecoration.none,
-                ),
+                style: CafeinTypography.commentBody(colors.onSurface),
                 decoration: InputDecoration(
                   hintText: '닉네임을 입력하세요',
-                  hintStyle: TextStyle(
-                    fontFamily: 'Pretendard',
-                    color: colors.mutedSoft,
-                  ),
+                  hintStyle: CafeinTypography.metadata(colors.mutedSoft),
                   errorText: _nicknameErrorText,
-                  errorStyle: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    height: 1.4,
-                    color: colors.error,
-                  ),
+                  errorStyle: CafeinTypography.metadata(colors.error),
                   filled: true,
                   fillColor: colors.fill,
                   border: const OutlineInputBorder(
@@ -240,24 +234,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 6),
                 Text(
                   '※ 띄어쓰기는 자동으로 무시되며, 본명이나 유추 가능한 닉네임은 피해주세요.',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w400,
-                    height: 1.4,
-                    color: colors.muted,
-                  ),
+                  style: CafeinTypography.metadata(colors.muted),
                 ),
               ],
               const SizedBox(height: 28),
               Text(
                 '근무 형태',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 10),
               Row(
@@ -282,12 +265,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const SizedBox(height: 28),
               Text(
                 '근무 경력',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: colors.onSurface,
-                ),
+                style: CafeinTypography.nickname(colors.onSurface),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -329,13 +307,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             color: colors.surface,
                           ),
                         )
-                      : const Text(
+                      : Text(
                           '저장하기',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: CafeinTypography.button(),
                         ),
                 ),
               ),
@@ -363,7 +337,7 @@ class _SelectChip extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
 
     return Material(
-      color: selected ? colors.onSurface : colors.fill,
+      color: selected ? colors.onSurface : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -374,12 +348,9 @@ class _SelectChip extends StatelessWidget {
           child: Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: selected ? colors.surface : colors.onSurface,
-            ),
+            style: CafeinTypography.button(
+              selected ? colors.surface : colors.onSurface,
+            ).copyWith(fontWeight: FontWeight.w500),
           ),
         ),
       ),
@@ -403,7 +374,7 @@ class _ExperienceChip extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
 
     return Material(
-      color: selected ? colors.onSurface : colors.fill,
+      color: selected ? colors.onSurface : Colors.transparent,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -413,11 +384,10 @@ class _ExperienceChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Text(
             label,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
+            style: CafeinTypography.button(
+              selected ? colors.surface : colors.onSurface,
+            ).copyWith(
               fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? colors.surface : colors.onSurface,
             ),
           ),
         ),

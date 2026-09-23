@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/constants.dart';
+import 'navigation/app_navigator.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/auth_service.dart';
@@ -26,6 +27,7 @@ class CafeinApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -33,6 +35,18 @@ class CafeinApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       locale: const Locale('ko'),
       scrollBehavior: const _NoOverscrollBehavior(),
+      // Ignore OS accessibility font size / "Bold text" so Pretendard
+      // weights stay exactly as designed (like Instagram / YouTube).
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaler: TextScaler.noScaling,
+            boldText: false,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: _home,
     );
   }

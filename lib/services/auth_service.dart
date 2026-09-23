@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'firebase_auth_bridge.dart';
+import 'nickname_lookup_cache.dart';
 import 'user_firestore_service.dart';
 
 class _UserProfile {
@@ -57,8 +59,10 @@ enum KakaoSessionStatus {
 
 /// Auth + onboarding profile, keyed by Kakao user id.
 ///
-/// Firebase Auth (Email/Password etc.) is intentionally not used.
-/// Identity is Kakao OAuth + in-app onboarding only.
+/// Primary identity remains Kakao OAuth + in-app onboarding.
+/// [FirebaseAuthBridge] also signs into Firebase Auth via Custom Token
+/// (uid = Kakao user id) so future Firestore Rules can use `request.auth`.
+/// Email/Password Auth is not used.
 class AuthService extends ChangeNotifier {
   AuthService._();
   static final AuthService instance = AuthService._();
@@ -171,6 +175,9 @@ class AuthService extends ChangeNotifier {
         ),
       );
 
+      // Refresh Firebase Auth from current Kakao access token (non-blocking fail).
+      unawaited(FirebaseAuthBridge.instance.signInWithCurrentKakaoToken());
+
       return needsOnboarding
           ? KakaoSessionStatus.needsOnboarding
           : KakaoSessionStatus.authenticated;
@@ -222,6 +229,8 @@ class AuthService extends ChangeNotifier {
     _nickname = null;
     _cafeType = null;
     _experience = null;
+    UserDocCache.instance.invalidate();
+    NicknameLookupCache.instance.invalidate();
     notifyListeners();
   }
 

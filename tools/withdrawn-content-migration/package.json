@@ -1,0 +1,15 @@
+{
+  "name": "cafein-withdrawn-content-migration",
+  "private": true,
+  "description": "One-shot remap of legacy withdrawn posts/comments authorId → deleted_* (manual only)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "migrate:dry-run": "node migrate.js",
+    "migrate:apply": "node migrate.js --apply"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

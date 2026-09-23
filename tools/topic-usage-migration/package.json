@@ -1,0 +1,16 @@
+{
+  "name": "cafein-topic-usage-migration",
+  "private": true,
+  "description": "One-shot recalculation of topics.usageCount from live posts.topicId (manual only)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "migrate:dry-run": "node migrate.js",
+    "migrate:verify": "node migrate.js --verify",
+    "migrate:apply": "node migrate.js --apply"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

@@ -1,0 +1,7 @@
+# Never commit Firebase service account keys or migration outputs
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+*.local
+node_modules/
+withdrawn_content_migration_preview_*.json
+withdrawn_content_migration_apply_*.json

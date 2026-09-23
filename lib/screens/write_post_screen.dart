@@ -7,7 +7,10 @@ import '../services/post_service.dart';
 import '../services/posts_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import '../widgets/no_underline_text_editing_controller.dart';
+import '../widgets/dismiss_keyboard_on_tap.dart';
+import '../widgets/poll_char_counter.dart';
 import '../widgets/topic_picker_sheet.dart';
 import 'post_detail_screen.dart';
 
@@ -24,8 +27,10 @@ class WritePostScreen extends StatefulWidget {
 class _WritePostScreenState extends State<WritePostScreen> {
   final _contentController = NoUnderlineTextEditingController();
   final _contentFocus = FocusNode();
-  final _pollQuestionController = NoUnderlineTextEditingController();
+  final _pollTitleController = NoUnderlineTextEditingController();
   final List<TextEditingController> _optionControllers = [];
+  final _scrollController = ScrollController();
+  final _pollSectionKey = GlobalKey();
 
   late String _nickname;
   String? _selectedTopic;
@@ -46,10 +51,40 @@ class _WritePostScreenState extends State<WritePostScreen> {
     super.initState();
     _nickname = AuthService.instance.nickname ?? AppConstants.randomNickname();
     _contentController.addListener(_onContentChanged);
+    _pollTitleController.addListener(_onPollFieldsChanged);
     _loadEditPostIfNeeded();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _contentFocus.requestFocus();
     });
+  }
+
+  void _onPollFieldsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _attachOptionListener(TextEditingController c) {
+    c.addListener(_onPollFieldsChanged);
+  }
+
+  /// Poll title + ≥2 options filled (within length limits).
+  bool get _pollFilledEnough {
+    if (!_showPoll) return false;
+    final title = _pollTitleController.text.trim();
+    if (title.isEmpty || title.length > _pollTitleMax) return false;
+    final options = _optionControllers
+        .map((c) => c.text.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (options.length < 2) return false;
+    return options.every((t) => t.length <= _pollOptionMax);
+  }
+
+  bool get _hasTopic => (_selectedTopic ?? '').trim().isNotEmpty;
+
+  bool get _canSubmit {
+    if (_submitting) return false;
+    if (!_hasTopic) return false;
+    return _hasContent || _pollFilledEnough;
   }
 
   void _loadEditPostIfNeeded() {
@@ -73,15 +108,17 @@ class _WritePostScreenState extends State<WritePostScreen> {
     if (poll != null) {
       _showPoll = true;
       _pollConfirmed = true;
-      _pollQuestionController.text = poll.question;
+      _pollTitleController.text = poll.trimmedTitle ?? poll.question;
       for (final option in poll.options) {
-        _optionControllers.add(
-          NoUnderlineTextEditingController(text: option.text),
-        );
+        final c = NoUnderlineTextEditingController(text: option.text);
+        _attachOptionListener(c);
+        _optionControllers.add(c);
       }
       if (_optionControllers.length < 2) {
         while (_optionControllers.length < 2) {
-          _optionControllers.add(NoUnderlineTextEditingController());
+          final c = NoUnderlineTextEditingController();
+          _attachOptionListener(c);
+          _optionControllers.add(c);
         }
       }
     }
@@ -188,8 +225,11 @@ class _WritePostScreenState extends State<WritePostScreen> {
     _contentController.removeListener(_onContentChanged);
     _contentController.dispose();
     _contentFocus.dispose();
-    _pollQuestionController.dispose();
+    _pollTitleController.removeListener(_onPollFieldsChanged);
+    _pollTitleController.dispose();
+    _scrollController.dispose();
     for (final c in _optionControllers) {
+      c.removeListener(_onPollFieldsChanged);
       c.dispose();
     }
     super.dispose();
@@ -204,15 +244,31 @@ class _WritePostScreenState extends State<WritePostScreen> {
       _showPoll = true;
       _pollConfirmed = false;
       if (_optionControllers.isEmpty) {
-        _addOption();
-        _addOption();
+        final a = NoUnderlineTextEditingController();
+        final b = NoUnderlineTextEditingController();
+        _attachOptionListener(a);
+        _attachOptionListener(b);
+        _optionControllers.addAll([a, b]);
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _pollSectionKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.1,
+        );
       }
     });
   }
 
   void _removePoll() {
-    _pollQuestionController.clear();
+    _pollTitleController.clear();
     for (final c in _optionControllers) {
+      c.removeListener(_onPollFieldsChanged);
       c.dispose();
     }
     setState(() {
@@ -222,22 +278,48 @@ class _WritePostScreenState extends State<WritePostScreen> {
     });
   }
 
+  static const _pollTitleMax = 40;
+  static const _pollOptionMax = 25;
+
   bool _confirmPoll() {
-    final question = _pollQuestionController.text.trim();
+    final title = _pollTitleController.text.trim();
     final options = _optionControllers
         .map((c) => c.text.trim())
         .where((t) => t.isNotEmpty)
         .toList();
 
-    if (question.isEmpty || options.length < 2) {
+    if (title.isEmpty || options.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('투표 질문과 선택지 2개 이상을 입력해주세요.')),
+        const SnackBar(
+          content: Text('제목과 질문 2개 이상을 입력해주세요.'),
+        ),
+      );
+      return false;
+    }
+    if (title.length > _pollTitleMax ||
+        options.any((t) => t.length > _pollOptionMax)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('제목은 40자, 질문은 25자까지 입력할 수 있어요.'),
+        ),
       );
       return false;
     }
 
     FocusScope.of(context).unfocus();
     setState(() => _pollConfirmed = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _pollSectionKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          alignment: 0.15,
+        );
+      }
+    });
     return true;
   }
 
@@ -246,13 +328,13 @@ class _WritePostScreenState extends State<WritePostScreen> {
   }
 
   Poll _draftPoll() {
-    final question = _pollQuestionController.text.trim();
+    final title = _pollTitleController.text.trim();
     final options = _optionControllers
         .map((c) => c.text.trim())
         .where((t) => t.isNotEmpty)
         .toList();
     return Poll(
-      question: question,
+      question: title,
       options: [
         for (var i = 0; i < options.length; i++)
           PollOption(id: 'draft-$i', text: options[i]),
@@ -270,39 +352,25 @@ class _WritePostScreenState extends State<WritePostScreen> {
           surfaceTintColor: Colors.transparent,
           title: Text(
             '투표 삭제',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              color: colors.onSurface,
-            ),
+            style: CafeinTypography.postTitle(colors.onSurface),
           ),
           content: Text(
             '투표를 삭제하시겠습니까?',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              color: colors.onSurface,
-            ),
+            style: CafeinTypography.postBody(colors.onSurface),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
               child: Text(
                 '아니오',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  color: colors.muted,
-                ),
+                style: CafeinTypography.button(colors.muted),
               ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               child: Text(
                 '예',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  color: colors.error,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: CafeinTypography.button(colors.error),
               ),
             ),
           ],
@@ -330,13 +398,9 @@ class _WritePostScreenState extends State<WritePostScreen> {
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: const Text(
+            child: Text(
               '수정',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: CafeinTypography.button(),
             ),
           ),
           IconButton(
@@ -395,17 +459,13 @@ class _WritePostScreenState extends State<WritePostScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildPollHeaderActions(confirmed: true),
-        Text(
-          poll.question,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: colors.onSurface,
-            height: 1.4,
+        if (poll.question.trim().isNotEmpty) ...[
+          Text(
+            poll.question,
+            style: CafeinTypography.pollTitle(colors.onSurface),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         for (final option in poll.options)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -418,26 +478,14 @@ class _WritePostScreenState extends State<WritePostScreen> {
               ),
               child: Text(
                 option.text,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: colors.onSurface,
-                  height: 1.35,
-                ),
+                style: CafeinTypography.pollOption(colors.onSurface),
               ),
             ),
           ),
         const SizedBox(height: 4),
         Text(
           '투표는 이 글 작성 화면에서만 수정할 수 있어요.',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 12,
-            fontWeight: FontWeight.w400,
-            height: 1.4,
-            color: colors.muted,
-          ),
+          style: CafeinTypography.metadata(colors.muted),
         ),
       ],
     );
@@ -459,16 +507,20 @@ class _WritePostScreenState extends State<WritePostScreen> {
         children: [
           Row(
             children: [
+              Text(
+                '투표',
+                style: CafeinTypography.nickname(colors.onSurface),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '투표',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                    color: colors.onSurface,
+                  '주제 필수,본문 작성 선택',
+                  style: CafeinTypography.metadata(colors.muted).copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               IconButton(
@@ -497,25 +549,40 @@ class _WritePostScreenState extends State<WritePostScreen> {
               ),
             ],
           ),
-          TextField(
-            controller: _pollQuestionController,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 15,
-              color: colors.onSurface,
-            ),
-            cursorColor: colors.onSurface,
-            decoration: InputDecoration(
-              hintText: '투표 질문',
-              hintStyle: TextStyle(
-                fontFamily: 'Pretendard',
-                color: colors.mutedSoft,
-              ),
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    '제목',
+                    style: CafeinTypography.metadata(colors.muted)
+                        .copyWith(fontWeight: FontWeight.w500),
+                  ),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _pollTitleController,
+                    style: CafeinTypography.pollTitle(colors.onSurface),
+                    cursorColor: colors.onSurface,
+                    decoration: InputDecoration(
+                      hintText: '제목을 작성해보세요.',
+                      hintStyle: CafeinTypography.metadata(colors.mutedSoft),
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                  ),
+                ),
+                PollCharCounter(
+                  controller: _pollTitleController,
+                  maxLength: _pollTitleMax,
+                ),
+              ],
             ),
           ),
           ...List.generate(_optionControllers.length, (index) {
@@ -526,18 +593,11 @@ class _WritePostScreenState extends State<WritePostScreen> {
                   Expanded(
                     child: TextField(
                       controller: _optionControllers[index],
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 15,
-                        color: colors.onSurface,
-                      ),
+                      style: CafeinTypography.pollOption(colors.onSurface),
                       cursorColor: colors.onSurface,
                       decoration: InputDecoration(
-                        hintText: '선택지 ${index + 1}',
-                        hintStyle: TextStyle(
-                          fontFamily: 'Pretendard',
-                          color: colors.mutedSoft,
-                        ),
+                        hintText: '질문',
+                        hintStyle: CafeinTypography.metadata(colors.mutedSoft),
                         filled: false,
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
@@ -548,28 +608,39 @@ class _WritePostScreenState extends State<WritePostScreen> {
                       ),
                     ),
                   ),
-                  if (_optionControllers.length > 2)
+                  PollCharCounter(
+                    controller: _optionControllers[index],
+                    maxLength: _pollOptionMax,
+                  ),
+                  // 기본 2개에는 X 없음 — 추가분(index >= 2)만 삭제.
+                  if (index >= 2)
                     IconButton(
                       onPressed: () => _removeOption(index),
                       icon: const Icon(Icons.close, size: 18),
-                      tooltip: '선택지 삭제',
+                      tooltip: '질문 삭제',
                     ),
                 ],
               ),
             );
           }),
+          const SizedBox(height: 10),
           TextButton(
-            onPressed: _optionControllers.length >= 6 ? null : _addOption,
+            onPressed: _optionControllers.length >= 4 ? null : _addOption,
             style: TextButton.styleFrom(
               foregroundColor: colors.onSurface,
+              disabledForegroundColor: colors.mutedSoft,
               padding: EdgeInsets.zero,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+              alignment: Alignment.centerLeft,
             ),
-            child: const Text(
-              '선택지 추가',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+            child: Text(
+              '질문 추가 (최대 4개)',
+              style: CafeinTypography.button(
+                _optionControllers.length >= 4
+                    ? colors.mutedSoft
+                    : colors.onSurface,
               ),
             ),
           ),
@@ -579,43 +650,65 @@ class _WritePostScreenState extends State<WritePostScreen> {
   }
 
   void _addOption() {
-    if (_optionControllers.length >= 6) return;
+    if (_optionControllers.length >= 4) return;
     setState(() {
-      _optionControllers.add(NoUnderlineTextEditingController());
+      final c = NoUnderlineTextEditingController();
+      _attachOptionListener(c);
+      _optionControllers.add(c);
     });
   }
 
   void _removeOption(int index) {
-    if (_optionControllers.length <= 2) return;
+    if (index < 2 || _optionControllers.length <= 2) return;
     setState(() {
-      _optionControllers.removeAt(index).dispose();
+      final c = _optionControllers.removeAt(index);
+      c.removeListener(_onPollFieldsChanged);
+      c.dispose();
     });
   }
 
   Future<void> _submit() async {
     final content = _contentController.text.trim();
-    if (content.isEmpty || _submitting) return;
+    if (_submitting) return;
+
+    if (!_hasTopic) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('주제를 선택해주세요.')),
+      );
+      return;
+    }
+
+    // Body optional when a valid poll is ready.
+    if (content.isEmpty && !_pollFilledEnough) return;
 
     Poll? poll;
     if (_showPoll) {
-      if (!_pollConfirmed) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('투표 확인(✓)을 눌러 투표를 확정해주세요.')),
-        );
-        return;
-      }
-
-      final question = _pollQuestionController.text.trim();
+      final title = _pollTitleController.text.trim();
       final options = _optionControllers
           .map((c) => c.text.trim())
           .where((t) => t.isNotEmpty)
           .toList();
 
-      if (question.isEmpty || options.length < 2) {
+      if (title.isEmpty || options.length < 2) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('투표 질문과 선택지 2개 이상을 입력해주세요.')),
+          const SnackBar(
+            content: Text('제목과 질문 2개 이상을 입력해주세요.'),
+          ),
         );
         return;
+      }
+      if (title.length > _pollTitleMax ||
+          options.any((t) => t.length > _pollOptionMax)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('제목은 40자, 질문은 25자까지 입력할 수 있어요.'),
+          ),
+        );
+        return;
+      }
+
+      if (!_pollConfirmed) {
+        setState(() => _pollConfirmed = true);
       }
 
       // Keep previous vote counts when editing an existing poll.
@@ -623,7 +716,7 @@ class _WritePostScreenState extends State<WritePostScreen> {
           ? PostService.instance.getById(widget.editPostId!)?.poll
           : null;
       poll = Poll(
-        question: question,
+        question: title,
         hasVoted: existing?.hasVoted ?? false,
         options: [
           for (var i = 0; i < options.length; i++)
@@ -642,6 +735,8 @@ class _WritePostScreenState extends State<WritePostScreen> {
             ),
         ],
       );
+    } else if (content.isEmpty) {
+      return;
     }
 
     setState(() => _submitting = true);
@@ -654,20 +749,16 @@ class _WritePostScreenState extends State<WritePostScreen> {
           topicName: _selectedTopic,
           clearTopic: _selectedTopic == null,
           poll: poll,
-          setPollIfMissing: _showPoll && poll != null,
-        );
-        final withPoll = updated.copyWith(
-          poll: poll,
           clearPoll: !_showPoll,
         );
-        PostService.instance.upsertRemotePost(withPoll);
+        PostService.instance.upsertRemotePost(updated);
         // Keep local service in sync for owner checks.
         PostService.instance.updatePost(
           postId: widget.editPostId!,
           content: content,
           tags: _selectedTopic == null ? const [] : [_selectedTopic!],
-          poll: poll,
-          clearPoll: !_showPoll,
+          poll: updated.poll,
+          clearPoll: updated.poll == null,
         );
         if (!mounted) return;
         setState(() => _submitting = false);
@@ -736,43 +827,39 @@ class _WritePostScreenState extends State<WritePostScreen> {
     final colors = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 18),
-      child: Row(
-        children: [
-          Text(
-            '주제:',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
-              fontWeight: FontWeight.w400,
-              color: colors.muted,
-            ),
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 5, 6, 5),
+          decoration: BoxDecoration(
+            color: colors.fill,
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(width: 6),
-          Flexible(
-            child: GestureDetector(
-              onTap: _openTopicPicker,
-              behavior: HitTestBehavior.opaque,
-              child: Text(
-                topic,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: colors.onSurface,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: GestureDetector(
+                  onTap: _openTopicPicker,
+                  behavior: HitTestBehavior.opaque,
+                  child: Text(
+                    '주제: $topic',
+                    style: CafeinTypography.topic(colors.onSurfaceVariant),
+                  ),
                 ),
               ),
-            ),
+              GestureDetector(
+                onTap: _clearTopic,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 2, 2, 2),
+                  child: Icon(Icons.close, size: 14, color: colors.muted),
+                ),
+              ),
+            ],
           ),
-          GestureDetector(
-            onTap: _clearTopic,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 2, 4),
-              child: Icon(Icons.close, size: 16, color: colors.muted),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -785,26 +872,12 @@ class _WritePostScreenState extends State<WritePostScreen> {
       children: [
         Text(
           '무슨 이야기를 하고 싶나요?',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 16,
-            height: 1.55,
-            fontWeight: FontWeight.w400,
-            color: colors.mutedSoft,
-            decoration: TextDecoration.none,
-          ),
+          style: CafeinTypography.postBody(colors.mutedSoft),
         ),
         const SizedBox(height: 8),
         Text(
-          '!을 입력해 주제를 정해보세요.',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 13,
-            height: 1.4,
-            fontWeight: FontWeight.w400,
-            color: colors.muted,
-            decoration: TextDecoration.none,
-          ),
+          '!을 입력해 주제를 정해보세요. (*주제 필수)',
+          style: CafeinTypography.metadata(colors.muted),
         ),
       ],
     );
@@ -812,7 +885,7 @@ class _WritePostScreenState extends State<WritePostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = _hasContent && !_submitting;
+    final canSubmit = _canSubmit;
     final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -828,13 +901,9 @@ class _WritePostScreenState extends State<WritePostScreen> {
             foregroundColor: colors.onSurface,
             padding: const EdgeInsets.only(left: 8),
           ),
-          child: const Text(
+          child: Text(
             '취소',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 14,
-              fontWeight: FontWeight.w400,
-            ),
+            style: CafeinTypography.button().copyWith(fontWeight: FontWeight.w400),
           ),
         ),
         actions: [
@@ -848,130 +917,135 @@ class _WritePostScreenState extends State<WritePostScreen> {
               ),
               child: Text(
                 _isEditing ? '수정 완료' : '등록',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: canSubmit ? colors.onSurface : colors.mutedSoft,
+                style: CafeinTypography.button(
+                  canSubmit ? colors.onSurface : colors.mutedSoft,
                 ),
               ),
             ),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenH,
-                22,
-                AppSpacing.screenH,
-                24,
-              ),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _nickname,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: colors.onSurface,
+      body: DismissKeyboardOnTap(
+        child: Column(
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.screenH,
+                      16,
+                      AppSpacing.screenH,
+                      24,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Stack(
-                    alignment: Alignment.topLeft,
-                    children: [
-                      Theme(
-                        data: Theme.of(context).copyWith(
-                          inputDecorationTheme: const InputDecorationTheme(
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            disabledBorder: InputBorder.none,
-                            errorBorder: InputBorder.none,
-                            focusedErrorBorder: InputBorder.none,
-                            filled: false,
-                            fillColor: Colors.transparent,
-                            hoverColor: Colors.transparent,
-                            focusColor: Colors.transparent,
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        ),
-                        child: TextField(
-                          controller: _contentController,
-                          focusNode: _contentFocus,
-                          minLines: 6,
-                          maxLines: null,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.newline,
-                          spellCheckConfiguration:
-                              const SpellCheckConfiguration.disabled(),
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 16,
-                            height: 1.55,
-                            fontWeight: FontWeight.w400,
-                            color: colors.onSurface,
-                            decoration: TextDecoration.none,
-                            decorationThickness: 0,
-                          ),
-                          cursorColor: colors.onSurface,
-                          decoration: const InputDecoration.collapsed(
-                            hintText: null,
-                            border: InputBorder.none,
-                          ),
-                        ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
                       ),
-                      if (_showComposeHints)
-                        IgnorePointer(
-                          child: _buildComposeHints(),
-                        ),
-                    ],
-                  ),
-                  _buildSelectedTopic(),
-                  if (_showPoll) ...[
-                    const SizedBox(height: 20),
-                    if (_pollConfirmed)
-                      _buildConfirmedPollPreview()
-                    else
-                      _buildPollEditor(),
-                  ],
-                ],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSelectedTopic(),
+                          Text(
+                            _nickname,
+                            style: CafeinTypography.nickname(colors.onSurface),
+                          ),
+                          const SizedBox(height: 12),
+                          Stack(
+                            alignment: Alignment.topLeft,
+                            children: [
+                              Theme(
+                                data: Theme.of(context).copyWith(
+                                  inputDecorationTheme:
+                                      const InputDecorationTheme(
+                                    border: InputBorder.none,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    disabledBorder: InputBorder.none,
+                                    errorBorder: InputBorder.none,
+                                    focusedErrorBorder: InputBorder.none,
+                                    filled: false,
+                                    fillColor: Colors.transparent,
+                                    hoverColor: Colors.transparent,
+                                    focusColor: Colors.transparent,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                child: TextField(
+                                  controller: _contentController,
+                                  focusNode: _contentFocus,
+                                  minLines: 6,
+                                  maxLines: null,
+                                  keyboardType: TextInputType.multiline,
+                                  textInputAction: TextInputAction.newline,
+                                  spellCheckConfiguration:
+                                      const SpellCheckConfiguration.disabled(),
+                                  style: CafeinTypography.postBody(colors.onSurface),
+                                  cursorColor: colors.onSurface,
+                                  decoration: const InputDecoration.collapsed(
+                                    hintText: null,
+                                    border: InputBorder.none,
+                                  ),
+                                ),
+                              ),
+                              if (_showComposeHints)
+                                IgnorePointer(
+                                  child: _buildComposeHints(),
+                                ),
+                            ],
+                          ),
+                          if (_showPoll) ...[
+                            const SizedBox(height: 20),
+                            KeyedSubtree(
+                              key: _pollSectionKey,
+                              child: _pollConfirmed
+                                  ? _buildConfirmedPollPreview()
+                                  : _buildPollEditor(),
+                            ),
+                          ],
+                          // Extra tappable empty space so taps outside TextField
+                          // dismiss the keyboard even when content is short.
+                          SizedBox(
+                            height: (constraints.maxHeight * 0.35)
+                                .clamp(80.0, 280.0),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-          ),
-          const Divider(height: 0.5, thickness: 0.5),
-          SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 52,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: _togglePoll,
-                      tooltip: _showPoll ? '투표 제거' : '투표',
-                      icon: Icon(
-                        _showPoll
-                            ? Icons.bar_chart
-                            : Icons.bar_chart_outlined,
-                        size: 20,
+            const Divider(height: 0.5, thickness: 0.5),
+            SafeArea(
+              top: false,
+              child: SizedBox(
+                height: 52,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: _togglePoll,
+                        tooltip: _showPoll ? '투표 제거' : '투표',
+                        icon: Icon(
+                          _showPoll
+                              ? Icons.bar_chart
+                              : Icons.bar_chart_outlined,
+                          size: 20,
+                        ),
+                        color: colors.onSurface,
                       ),
-                      color: colors.onSurface,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
+

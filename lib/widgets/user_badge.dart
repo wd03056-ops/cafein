@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
 
 /// Formats onboarding cafe type + experience into a short badge label.
 String getBadgeText(String cafeType, String experience) {
@@ -33,14 +34,7 @@ class UserBadgeWidget extends StatelessWidget {
       ),
       child: Text(
         badgeText,
-        style: TextStyle(
-          fontFamily: 'Pretendard',
-          color: colors.onSurfaceVariant,
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          height: 1.2,
-          letterSpacing: -0.1,
-        ),
+        style: CafeinTypography.metadata(colors.secondaryText),
       ),
     );
   }

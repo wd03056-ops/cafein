@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 
 import '../services/auth_service.dart';
+import '../services/fcm_service.dart';
+import '../services/firebase_auth_bridge.dart';
 import '../services/user_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import 'main_shell.dart';
 import 'onboarding_screen.dart';
 
@@ -44,7 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ? await UserApi.instance.loginWithKakaoTalk()
           : await UserApi.instance.loginWithKakaoAccount();
 
-      debugPrint('카카오 로그인 성공! 토큰: ${token.accessToken}');
+      debugPrint('카카오 로그인 성공');
 
       final user = await UserApi.instance.me();
       final kakaoUserId = user.id.toString();
@@ -62,6 +65,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final needsOnboarding =
           AuthService.instance.signInWithKakao(kakaoUserId);
 
+      // Firebase Auth bridge (optional while Rules are open; must not block Kakao).
+      await FirebaseAuthBridge.instance
+          .signInWithKakaoAccessToken(token.accessToken);
+
       if (!mounted) return;
 
       if (needsOnboarding) {
@@ -70,9 +77,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (!mounted) return;
         if (completed == true) {
+          await FcmService.instance.registerForUser();
           _enterApp();
         }
       } else {
+        await FcmService.instance.registerForUser();
         _enterApp();
       }
     } catch (error) {
@@ -90,7 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final canPop = Navigator.of(context).canPop();
     final colors = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
       appBar: AppBar(
@@ -106,64 +114,54 @@ class _LoginScreenState extends State<LoginScreen> {
             : null,
       ),
       body: SafeArea(
-        top: false,
-        bottom: false,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            AppSpacing.screenH + 8,
-            12,
-            AppSpacing.screenH + 8,
-            20 + bottomInset,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 24),
-              Text(
-                '카페인에 오신 걸\n환영해요',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  height: 1.35,
-                  letterSpacing: -0.6,
-                  color: colors.onSurface,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.screenH + 8,
+                12,
+                AppSpacing.screenH + 8,
+                20,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 32,
+                ),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 16),
+                      Text(
+                        '카페인에 오신 걸\n환영해요',
+                        style: CafeinTypography.screenTitle(colors.onSurface),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        '카카오로 시작하면 익명 닉네임으로\n안전하게 이야기를 나눌 수 있어요.',
+                        style: CafeinTypography.commentBody(colors.muted),
+                      ),
+                      const Spacer(),
+                      const SizedBox(height: 32),
+                      _KakaoLoginButton(
+                        loading: _loading,
+                        onPressed: _handleKakaoLogin,
+                        background: _kakaoYellow,
+                        foreground: _kakaoInk,
+                        disabledBackground: colors.kakaoYellowDisabled,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '카카오계정으로 간편하게 시작할 수 있어요',
+                        textAlign: TextAlign.center,
+                        style: CafeinTypography.metadata(colors.muted),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 14),
-              Text(
-                '카카오로 시작하면 익명 닉네임으로\n안전하게 이야기를 나눌 수 있어요.',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                  height: 1.55,
-                  letterSpacing: -0.2,
-                  color: colors.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-              const Spacer(),
-              _KakaoLoginButton(
-                loading: _loading,
-                onPressed: _handleKakaoLogin,
-                background: _kakaoYellow,
-                foreground: _kakaoInk,
-                disabledBackground: colors.kakaoYellowDisabled,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '카카오계정으로 간편하게 시작할 수 있어요',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w400,
-                  height: 1.4,
-                  color: colors.onSurface.withValues(alpha: 0.38),
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -188,17 +186,17 @@ class _KakaoLoginButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: Material(
-        color: loading ? disabledBackground : background,
+    return Material(
+      color: loading ? disabledBackground : background,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: loading ? null : onPressed,
         borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: loading ? null : onPressed,
-          borderRadius: BorderRadius.circular(12),
-          splashFactory: NoSplash.splashFactory,
+        splashFactory: NoSplash.splashFactory,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: loading
                 ? Center(
                     child: SizedBox(
@@ -212,22 +210,18 @@ class _KakaoLoginButton extends StatelessWidget {
                   )
                 : Row(
                     children: [
-                      const _KakaoSymbol(size: 22),
+                      const _KakaoSymbol(size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           '카카오로 3초 만에 시작하기',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.2,
-                            color: foreground,
-                          ),
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          style: CafeinTypography.button(foreground),
                         ),
                       ),
-                      const SizedBox(width: 32),
                     ],
                   ),
           ),

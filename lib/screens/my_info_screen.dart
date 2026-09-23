@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -5,14 +7,75 @@ import '../services/logout.dart';
 import '../services/user_firestore_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
+import '../theme/app_typography.dart';
 import 'edit_profile_screen.dart';
 import 'login_screen.dart';
 import 'my_posts_screen.dart';
 import 'settings_screen.dart';
 
 /// My info / my page tab.
-class MyInfoScreen extends StatelessWidget {
+class MyInfoScreen extends StatefulWidget {
   const MyInfoScreen({super.key});
+
+  @override
+  State<MyInfoScreen> createState() => _MyInfoScreenState();
+}
+
+class _MyInfoScreenState extends State<MyInfoScreen> {
+  String? _profileUid;
+  FirestoreUserProfile? _remoteProfile;
+  bool _profileLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AuthService.instance.addListener(_onAuthChanged);
+    _syncProfileForAuth();
+  }
+
+  @override
+  void dispose() {
+    AuthService.instance.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    _syncProfileForAuth();
+    if (mounted) setState(() {});
+  }
+
+  void _syncProfileForAuth() {
+    final auth = AuthService.instance;
+    final uid = auth.kakaoUserId?.trim();
+    if (!auth.hasCompletedOnboarding || uid == null || uid.isEmpty) {
+      _profileUid = null;
+      _remoteProfile = null;
+      _profileLoading = false;
+      return;
+    }
+    if (_profileUid == uid && (_remoteProfile != null || _profileLoading)) {
+      return;
+    }
+    _profileUid = uid;
+    unawaited(_loadProfile(uid));
+  }
+
+  Future<void> _loadProfile(String uid, {bool forceRefresh = false}) async {
+    if (!mounted) return;
+    setState(() => _profileLoading = true);
+    try {
+      final profile = await fetchUserProfile(uid, forceRefresh: forceRefresh);
+      if (!mounted || _profileUid != uid) return;
+      setState(() {
+        _remoteProfile = profile;
+        _profileLoading = false;
+      });
+    } catch (e) {
+      debugPrint('내정보 프로필 로드 실패: $e');
+      if (!mounted || _profileUid != uid) return;
+      setState(() => _profileLoading = false);
+    }
+  }
 
   Future<void> _handleAuthTap(BuildContext context, bool loggedIn) async {
     if (loggedIn) {
@@ -34,28 +97,18 @@ class MyInfoScreen extends StatelessWidget {
           surfaceTintColor: Colors.transparent,
           title: Text(
             '로그아웃',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              color: colors.onSurface,
-            ),
+            style: CafeinTypography.postTitle(colors.onSurface),
           ),
           content: Text(
             '정말 로그아웃 하시겠습니까?',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              color: colors.onSurface,
-            ),
+            style: CafeinTypography.postBody(colors.onSurface),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
                 '취소',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  color: colors.muted,
-                ),
+                style: CafeinTypography.button(colors.muted),
               ),
             ),
             TextButton(
@@ -65,11 +118,7 @@ class MyInfoScreen extends StatelessWidget {
               },
               child: Text(
                 '확인',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  color: colors.error,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: CafeinTypography.button(colors.error),
               ),
             ),
           ],
@@ -89,6 +138,10 @@ class MyInfoScreen extends StatelessWidget {
         ),
       ),
     );
+    final uid = auth.kakaoUserId?.trim();
+    if (uid != null && uid.isNotEmpty && mounted) {
+      await _loadProfile(uid, forceRefresh: true);
+    }
   }
 
   @override
@@ -96,10 +149,11 @@ class MyInfoScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('내정보'),
+        // Root tab: keep title aligned with screen padding (theme titleSpacing is 0).
+        titleSpacing: AppSpacing.screenH,
       ),
-      body: ListenableBuilder(
-        listenable: AuthService.instance,
-        builder: (context, _) {
+      body: Builder(
+        builder: (context) {
           final auth = AuthService.instance;
           final loggedIn = auth.hasCompletedOnboarding;
           final uid = auth.kakaoUserId;
@@ -117,78 +171,78 @@ class MyInfoScreen extends StatelessWidget {
             );
           }
 
-          return StreamBuilder<FirestoreUserProfile?>(
-            stream: watchUserProfile(uid),
-            builder: (context, snapshot) {
-              final remote = snapshot.data;
-              final nickname = (auth.nickname?.trim().isNotEmpty == true)
-                  ? auth.nickname!.trim()
-                  : (remote?.nickname.trim().isNotEmpty == true
-                      ? remote!.nickname.trim()
-                      : '카페인');
-              final email = remote?.email.trim() ?? '';
-              final profileLine = [
-                if (auth.cafeType != null && auth.cafeType!.isNotEmpty)
-                  auth.cafeType!,
-                if (auth.experienceLabel != null &&
-                    auth.experienceLabel!.isNotEmpty)
-                  auth.experienceLabel!,
-              ].join(' · ');
+          final remote = _remoteProfile;
+          final nickname = (auth.nickname?.trim().isNotEmpty == true)
+              ? auth.nickname!.trim()
+              : (remote?.nickname.trim().isNotEmpty == true
+                  ? remote!.nickname.trim()
+                  : '카페인');
+          final email = remote?.email.trim() ?? '';
+          final profileLine = [
+            if (auth.cafeType != null && auth.cafeType!.isNotEmpty)
+              auth.cafeType!,
+            if (auth.experienceLabel != null &&
+                auth.experienceLabel!.isNotEmpty)
+              auth.experienceLabel!,
+          ].join(' · ');
 
-              return ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenH,
-                  8,
-                  AppSpacing.screenH,
-                  40,
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenH,
+              8,
+              AppSpacing.screenH,
+              40,
+            ),
+            children: [
+              const SizedBox(height: 8),
+              _ProfileHeader(
+                nickname: nickname,
+                email: email,
+                subtitle: profileLine.isEmpty
+                    ? '카페 종사자 커뮤니티'
+                    : profileLine,
+              ),
+              if (_profileLoading && remote == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: LinearProgressIndicator(minHeight: 2),
                 ),
-                children: [
-                  const SizedBox(height: 8),
-                  _ProfileHeader(
-                    nickname: nickname,
-                    email: email,
-                    subtitle: profileLine.isEmpty
-                        ? '카페 종사자 커뮤니티'
-                        : profileLine,
-                  ),
-                  const SizedBox(height: 28),
-                  _MenuRow(
-                    title: '내가 쓴 글',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const MyPostsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  _MenuRow(
-                    title: '정보 수정',
-                    onTap: () => _openEditProfile(context),
-                  ),
-                  _MenuRow(
-                    title: '설정',
-                    subtitle: '이용약관 · 개인정보 · 라이선스',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const SettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  const Divider(height: 0.5, thickness: 0.5),
-                  const SizedBox(height: 8),
-                  _MenuRow(
-                    title: '로그아웃',
-                    titleColor: Theme.of(context).colorScheme.error,
-                    showChevron: false,
-                    onTap: () => _handleAuthTap(context, true),
-                  ),
-                ],
-              );
-            },
+              const SizedBox(height: 28),
+              _MenuRow(
+                title: '내가 쓴 글',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const MyPostsScreen(),
+                    ),
+                  );
+                },
+              ),
+              _MenuRow(
+                title: '정보 수정',
+                onTap: () => _openEditProfile(context),
+              ),
+              _MenuRow(
+                title: '설정',
+                subtitle: '이용약관 · 개인정보 · 라이선스',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+              const Divider(height: 0.5, thickness: 0.5),
+              const SizedBox(height: 8),
+              _MenuRow(
+                title: '로그아웃',
+                titleColor: Theme.of(context).colorScheme.error,
+                showChevron: false,
+                onTap: () => _handleAuthTap(context, true),
+              ),
+            ],
           );
         },
       ),
@@ -239,12 +293,7 @@ class _LoggedOutBody extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           '카카오로 시작하면 프로필과 내 글을 확인할 수 있어요.',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 13,
-            color: colors.muted,
-            height: 1.4,
-          ),
+          style: CafeinTypography.metadata(colors.muted),
         ),
       ],
     );
@@ -271,36 +320,19 @@ class _ProfileHeader extends StatelessWidget {
       children: [
         Text(
           nickname,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.4,
-            height: 1.25,
-            color: colors.onSurface,
-          ),
+          style: CafeinTypography.screenTitle(colors.onSurface),
         ),
         if (email.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
             email,
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
-              fontWeight: FontWeight.w400,
-              color: colors.muted,
-            ),
+            style: CafeinTypography.metadata(colors.muted),
           ),
         ],
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 13,
-            fontWeight: FontWeight.w400,
-            color: colors.muted,
-          ),
+          style: CafeinTypography.metadata(colors.muted),
         ),
       ],
     );
@@ -340,24 +372,14 @@ class _MenuRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -0.2,
-                      color: titleColor ?? colors.onSurface,
-                    ),
+                    style: CafeinTypography.postBody(titleColor ?? colors.onSurface)
+                        .copyWith(fontWeight: FontWeight.w500, letterSpacing: -0.2),
                   ),
                   if (subtitle != null && subtitle!.isNotEmpty) ...[
                     const SizedBox(height: 3),
                     Text(
                       subtitle!,
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: colors.muted,
-                      ),
+                      style: CafeinTypography.metadata(colors.muted),
                     ),
                   ],
                 ],
