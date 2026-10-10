@@ -24,11 +24,7 @@ class CommentItem extends StatelessWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onLike;
 
-  bool get _isMine {
-    final myId = AuthService.instance.kakaoUserId?.trim() ?? '';
-    final authorId = comment.authorId?.trim() ?? '';
-    return myId.isNotEmpty && authorId.isNotEmpty && myId == authorId;
-  }
+  bool get _isMine => AuthService.instance.isCurrentUser(comment.authorId);
 
   @override
   Widget build(BuildContext context) {

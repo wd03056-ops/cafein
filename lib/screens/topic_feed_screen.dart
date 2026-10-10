@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/post.dart';
 import '../models/topic.dart';
+import '../services/auth_service.dart';
 import '../services/block_firestore_service.dart';
 import '../services/like_helper.dart';
 import '../services/post_service.dart';
@@ -47,6 +48,7 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
   void initState() {
     super.initState();
     BlockFirestoreService.instance.addListener(_onBlocksChanged);
+    AuthService.instance.addListener(_onBlocksChanged);
     BlockFirestoreService.instance.ensureLoaded();
     _load();
   }
@@ -58,6 +60,7 @@ class _TopicFeedScreenState extends State<TopicFeedScreen> {
   @override
   void dispose() {
     BlockFirestoreService.instance.removeListener(_onBlocksChanged);
+    AuthService.instance.removeListener(_onBlocksChanged);
     super.dispose();
   }
 

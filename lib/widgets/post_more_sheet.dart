@@ -161,6 +161,12 @@ class PostMoreSheet {
       ),
     );
     if (ok != true || !context.mounted) return false;
+    if (!PostService.instance.isMyPost(post.id, post: post)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인 후 본인 글만 삭제할 수 있어요.')),
+      );
+      return false;
+    }
 
     final service = PostService.instance;
     final postsFs = PostsFirestoreService.instance;

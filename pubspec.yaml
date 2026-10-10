@@ -2,7 +2,7 @@ name: cafein
 description: "카페 종사자 익명 커뮤니티 카페인"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+10
 
 environment:
   sdk: ^3.12.2

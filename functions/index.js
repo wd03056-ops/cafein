@@ -47,6 +47,9 @@ exports.onPostDeletedTopicUsage = topicUsage.onPostDeleted;
 const { createWithdrawAccountCallable } = require("./withdraw_account");
 exports.withdrawAccount = createWithdrawAccountCallable(CAFEIN_REGION);
 
+const { createReviewerLoginCallable } = require("./reviewer_login");
+exports.createReviewerCustomToken = createReviewerLoginCallable(CAFEIN_REGION);
+
 /**
  * Verify Kakao access token with Kakao API (never trust client-sent kakaoUserId alone).
  * @returns {Promise<string>} Kakao user id as string

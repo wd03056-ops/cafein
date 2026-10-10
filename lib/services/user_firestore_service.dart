@@ -40,12 +40,18 @@ class FirestoreUserProfile {
     this.nickname = '',
     this.email = '',
     this.profileImage = '',
+    this.cafeType = '',
+    this.experience = '',
   });
 
   final String uid;
   final String nickname;
   final String email;
   final String profileImage;
+
+  /// Optional on legacy docs; onboarding does not write these.
+  final String cafeType;
+  final String experience;
 
   factory FirestoreUserProfile.fromDoc(
     String uid,
@@ -57,6 +63,8 @@ class FirestoreUserProfile {
       nickname: (map['nickname'] as String?)?.trim() ?? '',
       email: (map['email'] as String?)?.trim() ?? '',
       profileImage: (map['profileImage'] as String?)?.trim() ?? '',
+      cafeType: (map['cafeType'] as String?)?.trim() ?? '',
+      experience: (map['experience'] as String?)?.trim() ?? '',
     );
   }
 }
@@ -133,6 +141,24 @@ Future<FirestoreUserProfile?> fetchUserProfile(
     debugPrint('유저 프로필 조회 실패: $e');
     return FirestoreUserProfile(uid: id);
   }
+}
+
+/// Like [fetchUserProfile] but for login decisions: returns null only when
+/// the server confirms `users/{uid}` does not exist, and throws on failure
+/// (offline / permission) so a lookup error never looks like a new user.
+Future<FirestoreUserProfile?> fetchUserProfileStrict(String uid) async {
+  final id = uid.trim();
+  if (id.isEmpty) return null;
+  final snap = await UserDocCache.instance.get(id);
+  if (snap == null) return null;
+  if (!snap.exists) {
+    if (snap.metadata.isFromCache) {
+      UserDocCache.instance.invalidate(id);
+      throw StateError('users/$id missing only in offline cache');
+    }
+    return null;
+  }
+  return FirestoreUserProfile.fromDoc(id, snap.data());
 }
 
 /// Compatibility: one-shot stream (no live `snapshots()` listener).

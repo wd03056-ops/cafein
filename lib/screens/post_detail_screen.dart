@@ -802,12 +802,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     else
                       ...comments.map(
                         (c) {
-                          final myId =
-                              AuthService.instance.kakaoUserId?.trim() ?? '';
-                          final authorId = c.authorId?.trim() ?? '';
-                          final mine = myId.isNotEmpty &&
-                              authorId.isNotEmpty &&
-                              myId == authorId;
+                          final mine =
+                              AuthService.instance.isCurrentUser(c.authorId);
                           return CommentItem(
                             comment: c,
                             onMore: mine

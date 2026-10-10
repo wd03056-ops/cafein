@@ -48,6 +48,9 @@ app.*.map.json
 **/key.properties
 **/*.jks
 **/*.keystore
+**/*.p12
+**/*.pfx
+android/create-keystore-status.txt
 
 # Cloud Functions local params (ADMIN_UIDS etc.)
 functions/.env

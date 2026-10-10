@@ -1,4 +1,4 @@
-package com.cafein.cafein
+package com.baekson.cafein
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

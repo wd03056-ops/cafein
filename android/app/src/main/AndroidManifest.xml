@@ -53,12 +53,12 @@
 
         <!--
           AdMob App ID — required or the app crashes with "Missing application ID".
-          Sample/test ID from Google docs. Replace with your real AdMob app ID before release.
+          CAFEIN production App ID (publisher 4352425125830619).
           https://developers.google.com/admob/android/quick-start
         -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-4352425125830619~5945651696"/>
 
         <!-- Hide Native Ad Validator overlay (green/red debug cards on test ads). -->
         <meta-data

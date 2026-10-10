@@ -23,7 +23,70 @@ class _LoginScreenState extends State<LoginScreen> {
   static const _kakaoYellow = Color(0xFFFEE500);
   static const _kakaoInk = Color(0xFF191919);
 
+  static const _reviewerTapTarget = 5;
+  static const _reviewerTapWindow = Duration(milliseconds: 1500);
+
   bool _loading = false;
+  int _titleTapCount = 0;
+  DateTime? _lastTitleTap;
+
+  void _onTitleTap() {
+    if (_loading) return;
+    final now = DateTime.now();
+    final last = _lastTitleTap;
+    _titleTapCount = (last != null && now.difference(last) <= _reviewerTapWindow)
+        ? _titleTapCount + 1
+        : 1;
+    _lastTitleTap = now;
+    if (_titleTapCount >= _reviewerTapTarget) {
+      _titleTapCount = 0;
+      _lastTitleTap = null;
+      _handleReviewerLogin();
+    }
+  }
+
+  /// Keyboard dismiss + dialog exit animation must finish before navigating.
+  Future<void> _waitForUiToSettle() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
+  Future<void> _handleReviewerLogin() async {
+    final code = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ReviewerCodeDialog(),
+    );
+    if (!mounted) return;
+    await _waitForUiToSettle();
+    if (!mounted || code == null || code.trim().isEmpty) return;
+
+    setState(() => _loading = true);
+    try {
+      final result = await FirebaseAuthBridge.instance.signInAsReviewer(code);
+      await AuthService.instance.signInAsReviewer(
+        uid: result.uid,
+        nickname: result.nickname,
+        cafeType: result.cafeType,
+        experience: result.experience,
+      );
+      await FcmService.instance.registerForUser();
+      if (!mounted) return;
+      await _waitForUiToSettle();
+      _enterApp();
+    } catch (error) {
+      debugPrint('심사용 로그인 실패: $error');
+      if (!mounted) return;
+      final message = error is ReviewerLoginException
+          ? error.message
+          : '심사용 로그인에 실패했어요.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   void _enterApp() {
     if (!mounted) return;
@@ -53,6 +116,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final kakaoUserId = user.id.toString();
       debugPrint('카카오 유저 고유 ID: $kakaoUserId');
 
+      // Firebase Auth first: reading/writing users/{uid} requires request.auth.
+      await FirebaseAuthBridge.instance
+          .signInWithKakaoAccessToken(token.accessToken);
+
+      // Local profile, else restore from users/{uid}, else onboarding.
+      // Runs before saveUserToFirestore so the lookup sees the original doc.
+      final needsOnboarding = await AuthService.instance
+          .signInWithKakaoRestoringProfile(kakaoUserId);
+
       final kakaoAccount = user.kakaoAccount;
       final kakaoProfile = kakaoAccount?.profile;
       await saveUserToFirestore(
@@ -61,13 +133,6 @@ class _LoginScreenState extends State<LoginScreen> {
         profileImage: kakaoProfile?.profileImageUrl ?? '',
         email: kakaoAccount?.email ?? '',
       );
-
-      final needsOnboarding =
-          AuthService.instance.signInWithKakao(kakaoUserId);
-
-      // Firebase Auth bridge (optional while Rules are open; must not block Kakao).
-      await FirebaseAuthBridge.instance
-          .signInWithKakaoAccessToken(token.accessToken);
 
       if (!mounted) return;
 
@@ -84,6 +149,21 @@ class _LoginScreenState extends State<LoginScreen> {
         await FcmService.instance.registerForUser();
         _enterApp();
       }
+    } on ProfileLookupException catch (error) {
+      // Lookup failed ≠ new user: never onboard; drop the half session.
+      debugPrint('회원 정보 조회 실패: $error');
+      AuthService.instance.clearSession();
+      await FirebaseAuthBridge.instance.signOut();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('회원 정보를 불러오지 못했어요. 네트워크 상태를 확인해 주세요.'),
+          action: SnackBarAction(
+            label: '다시 시도',
+            onPressed: _handleKakaoLogin,
+          ),
+        ),
+      );
     } catch (error) {
       debugPrint('카카오 로그인 실패: $error');
       if (!mounted) return;
@@ -132,9 +212,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: 16),
-                      Text(
-                        '카페인에 오신 걸\n환영해요',
-                        style: CafeinTypography.screenTitle(colors.onSurface),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _onTitleTap,
+                        child: Text(
+                          '카페인에 오신 걸\n환영해요',
+                          style: CafeinTypography.screenTitle(colors.onSurface),
+                        ),
                       ),
                       const SizedBox(height: 14),
                       Text(
@@ -164,6 +248,54 @@ class _LoginScreenState extends State<LoginScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+/// Owns its controller so it is disposed only after the exit animation ends.
+class _ReviewerCodeDialog extends StatefulWidget {
+  const _ReviewerCodeDialog();
+
+  @override
+  State<_ReviewerCodeDialog> createState() => _ReviewerCodeDialogState();
+}
+
+class _ReviewerCodeDialogState extends State<_ReviewerCodeDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close([String? value]) {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('심사용 로그인'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        obscureText: true,
+        textInputAction: TextInputAction.done,
+        decoration: const InputDecoration(hintText: '접근 코드'),
+        onSubmitted: _close,
+      ),
+      actions: [
+        TextButton(
+          onPressed: _close,
+          child: const Text('취소'),
+        ),
+        TextButton(
+          onPressed: () => _close(_controller.text),
+          child: const Text('로그인'),
+        ),
+      ],
     );
   }
 }

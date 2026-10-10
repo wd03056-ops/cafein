@@ -7,7 +7,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_auth_bridge.dart';
 import 'nickname_lookup_cache.dart';
+import 'posts_firestore_service.dart';
 import 'user_firestore_service.dart';
+
+/// `users/{uid}` could not be read (network / permission). Distinct from
+/// "document missing" so existing users are never sent to onboarding by error.
+class ProfileLookupException implements Exception {
+  const ProfileLookupException(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'ProfileLookupException: $cause';
+}
+
+typedef ProfileBadge = ({String cafeType, String experience});
+
+/// Badge fields from the user's newest post (users docs usually lack them).
+Future<ProfileBadge?> _latestPostBadge(String uid) async {
+  final posts = await PostsFirestoreService.instance.fetchPostsByAuthor(uid);
+  for (final post in posts) {
+    final cafeType = post.cafeType?.trim() ?? '';
+    final experience = post.experience?.trim() ?? '';
+    if (cafeType.isNotEmpty && experience.isNotEmpty) {
+      return (cafeType: cafeType, experience: experience);
+    }
+  }
+  return null;
+}
 
 class _UserProfile {
   const _UserProfile({
@@ -89,6 +116,21 @@ class AuthService extends ChangeNotifier {
   bool get hasCompletedOnboarding =>
       _isLoggedIn && _nickname != null && _nickname!.trim().isNotEmpty;
 
+  /// Uid for ownership checks (수정/삭제). Null unless fully logged in —
+  /// [kakaoUserId] alone can linger while onboarding is still pending.
+  String? get currentUserId {
+    if (!_isLoggedIn) return null;
+    final id = _kakaoUserId?.trim();
+    return (id == null || id.isEmpty) ? null : id;
+  }
+
+  /// True only when logged in and [authorId] is the current user's uid.
+  bool isCurrentUser(String? authorId) {
+    final uid = currentUserId;
+    final author = authorId?.trim() ?? '';
+    return uid != null && author.isNotEmpty && author == uid;
+  }
+
   bool get needsOnboarding =>
       _kakaoUserId != null &&
       (_nickname == null || _nickname!.trim().isEmpty);
@@ -154,6 +196,9 @@ class AuthService extends ChangeNotifier {
       final token = await TokenManagerProvider.instance.manager.getToken();
       if (token == null) {
         debugPrint('저장된 카카오 토큰 없음');
+        if (await _tryRestoreReviewerSession()) {
+          return KakaoSessionStatus.authenticated;
+        }
         clearSession();
         return KakaoSessionStatus.none;
       }
@@ -162,7 +207,17 @@ class AuthService extends ChangeNotifier {
       final kakaoUserId = user.id.toString();
       debugPrint('자동 로그인: 카카오 유저 ID $kakaoUserId');
 
-      final needsOnboarding = signInWithKakao(kakaoUserId);
+      // Refresh Firebase Auth from current Kakao access token. Await only when
+      // the profile must be restored from users/{uid} (read needs auth).
+      if (hasLocalProfile(kakaoUserId)) {
+        unawaited(FirebaseAuthBridge.instance.signInWithCurrentKakaoToken());
+      } else {
+        await FirebaseAuthBridge.instance.signInWithCurrentKakaoToken();
+      }
+
+      // ProfileLookupException → catch below → guest (Kakao token kept).
+      final needsOnboarding =
+          await signInWithKakaoRestoringProfile(kakaoUserId);
 
       final kakaoAccount = user.kakaoAccount;
       final kakaoProfile = kakaoAccount?.profile;
@@ -174,9 +229,6 @@ class AuthService extends ChangeNotifier {
           email: kakaoAccount?.email ?? '',
         ),
       );
-
-      // Refresh Firebase Auth from current Kakao access token (non-blocking fail).
-      unawaited(FirebaseAuthBridge.instance.signInWithCurrentKakaoToken());
 
       return needsOnboarding
           ? KakaoSessionStatus.needsOnboarding
@@ -210,6 +262,117 @@ class AuthService extends ChangeNotifier {
     return true;
   }
 
+  bool hasLocalProfile(String kakaoUserId) =>
+      _profilesByKakaoId.containsKey(kakaoUserId.trim());
+
+  @visibleForTesting
+  Future<FirestoreUserProfile?> Function(String uid) remoteProfileLookup =
+      fetchUserProfileStrict;
+
+  @visibleForTesting
+  Future<ProfileBadge?> Function(String uid) remoteBadgeLookup =
+      _latestPostBadge;
+
+  /// [signInWithKakao] + restore from Firestore `users/{uid}` when the local
+  /// profile is missing (e.g. reinstall / package change).
+  ///
+  /// Returns true when onboarding is still required (no doc, or no nickname
+  /// — includes withdrawn users whose doc was deleted).
+  /// Throws [ProfileLookupException] if the lookup itself failed; the
+  /// session stays logged out in that case.
+  Future<bool> signInWithKakaoRestoringProfile(String kakaoUserId) async {
+    await init();
+    final uid = kakaoUserId.trim();
+    if (!signInWithKakao(uid)) return false;
+
+    final FirestoreUserProfile? remote;
+    try {
+      remote = await remoteProfileLookup(uid);
+    } catch (e) {
+      debugPrint('[PROFILE_RESTORE] lookup failed uid=$uid error=$e');
+      throw ProfileLookupException(e);
+    }
+
+    final nickname = remote?.nickname.trim() ?? '';
+    if (remote == null || nickname.isEmpty) {
+      debugPrint('[PROFILE_RESTORE] uid=$uid result=onboarding '
+          'docExists=${remote != null}');
+      return true;
+    }
+
+    var cafeType = remote.cafeType;
+    var experience = remote.experience;
+    if (cafeType.isEmpty || experience.isEmpty) {
+      try {
+        final badge = await remoteBadgeLookup(uid);
+        if (badge != null) {
+          if (cafeType.isEmpty) cafeType = badge.cafeType;
+          if (experience.isEmpty) experience = badge.experience;
+        }
+      } catch (e) {
+        debugPrint('[PROFILE_RESTORE] badge lookup skipped: $e');
+      }
+    }
+
+    // Logout / another login happened while awaiting the lookup.
+    if (_kakaoUserId != uid) {
+      throw const ProfileLookupException('session changed during restore');
+    }
+
+    _nickname = nickname;
+    _cafeType = cafeType;
+    _experience = experience;
+    _isLoggedIn = true;
+    _profilesByKakaoId[uid] = _UserProfile(
+      nickname: nickname,
+      cafeType: cafeType,
+      experience: experience,
+    );
+    await _persistProfiles();
+    NicknameLookupCache.instance.put(uid, nickname);
+    debugPrint('[PROFILE_RESTORE] uid=$uid result=restored');
+    notifyListeners();
+    return false;
+  }
+
+  /// Fixed Firebase uid of the Google Play review account (server-issued).
+  static const reviewerUid = 'google_reviewer';
+
+  bool get isReviewer => _kakaoUserId == reviewerUid;
+
+  /// Session for the Play reviewer account after [FirebaseAuthBridge.signInAsReviewer].
+  /// Profile is seeded server-side, so onboarding is skipped.
+  Future<void> signInAsReviewer({
+    required String uid,
+    required String nickname,
+    required String cafeType,
+    required String experience,
+  }) async {
+    await init();
+    _kakaoUserId = uid;
+    _nickname = nickname;
+    _cafeType = cafeType;
+    _experience = experience;
+    _isLoggedIn = true;
+    _profilesByKakaoId[uid] = _UserProfile(
+      nickname: nickname,
+      cafeType: cafeType,
+      experience: experience,
+    );
+    await _persistProfiles();
+    notifyListeners();
+  }
+
+  Future<bool> _tryRestoreReviewerSession() async {
+    final profile = _profilesByKakaoId[reviewerUid];
+    if (profile == null) return false;
+    final uid = await FirebaseAuthBridge.instance.restoredUid();
+    if (uid != reviewerUid) return false;
+    debugPrint('자동 로그인: 심사용 계정');
+    signInWithKakao(reviewerUid);
+    return true;
+  }
+
   void setLoggedIn(bool value) {
     if (_isLoggedIn == value && value) return;
     _isLoggedIn = value;
@@ -231,6 +394,10 @@ class AuthService extends ChangeNotifier {
     _experience = null;
     UserDocCache.instance.invalidate();
     NicknameLookupCache.instance.invalidate();
+    if (kDebugMode) {
+      debugPrint('[AUTH_STATE] cleared currentUserId=$currentUserId '
+          'isLoggedIn=$_isLoggedIn');
+    }
     notifyListeners();
   }
 

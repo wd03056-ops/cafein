@@ -67,7 +67,7 @@ fun requireReleaseSigningConfigured() {
 }
 
 android {
-    namespace = "com.cafein.cafein"
+    namespace = "com.baekson.cafein"
     // AdMob quick-start: compileSdk 35+ (Flutter default is currently higher).
     compileSdk = maxOf(35, flutter.compileSdkVersion)
     ndkVersion = flutter.ndkVersion
@@ -80,7 +80,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.cafein.cafein"
+        applicationId = "com.baekson.cafein"
         // AdMob / google_mobile_ads 9.x: minSdk 24+.
         minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
@@ -99,6 +99,12 @@ android {
                 storePassword = keystoreProperties["storePassword"] as String
                 // storeFile path is relative to android/app/ (this module).
                 storeFile = file(keystoreProperties["storeFile"] as String)
+                // PKCS12 (.p12/.pfx) and JKS both work; AGP detects type from file.
+                val storePath =
+                    (keystoreProperties["storeFile"] as String).lowercase()
+                if (storePath.endsWith(".p12") || storePath.endsWith(".pfx")) {
+                    storeType = "PKCS12"
+                }
             }
         }
     }
@@ -111,6 +117,10 @@ android {
             }
             // If key.properties is missing, leave unsigned here and fail
             // assembleRelease / bundleRelease in afterEvaluate (below).
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

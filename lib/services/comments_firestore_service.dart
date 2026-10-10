@@ -556,7 +556,7 @@ class CommentsFirestoreService {
     required String content,
   }) async {
     AuthService.instance.requireKakaoWriter();
-    final uid = AuthService.instance.kakaoUserId?.trim() ?? '';
+    final uid = AuthService.instance.currentUserId ?? '';
     if (uid.isEmpty) {
       throw StateError('로그인이 필요해요.');
     }
@@ -615,7 +615,7 @@ class CommentsFirestoreService {
     bool bypassOwnerCheck = false,
   }) async {
     AuthService.instance.requireKakaoWriter();
-    final uid = AuthService.instance.kakaoUserId?.trim() ?? '';
+    final uid = AuthService.instance.currentUserId ?? '';
     if (uid.isEmpty) {
       throw StateError('로그인이 필요해요.');
     }

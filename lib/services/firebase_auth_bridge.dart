@@ -97,6 +97,86 @@ class FirebaseAuthBridge {
     }
   }
 
+  /// Google Play reviewer sign-in (no Kakao SDK).
+  ///
+  /// Server verifies [accessCode] and returns a Custom Token for the fixed
+  /// reviewer uid plus its seeded profile. Throws [ReviewerLoginException].
+  Future<ReviewerLoginResult> signInAsReviewer(String accessCode) async {
+    final code = accessCode.trim();
+    if (code.isEmpty) {
+      throw const ReviewerLoginException('접근 코드를 입력해 주세요.');
+    }
+
+    final Map<String, dynamic> map;
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: region)
+          .httpsCallable('createReviewerCustomToken');
+      final result = await callable.call(<String, dynamic>{
+        'accessCode': code,
+      });
+      final data = result.data;
+      if (data is! Map) {
+        throw const ReviewerLoginException('서버 응답이 올바르지 않아요.');
+      }
+      map = Map<String, dynamic>.from(data);
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[FIREBASE_AUTH_BRIDGE] reviewerLogin=failed code=${e.code}');
+      throw ReviewerLoginException(switch (e.code) {
+        'permission-denied' => '접근 코드가 올바르지 않아요.',
+        'failed-precondition' => '심사용 로그인이 비활성화되어 있어요.',
+        'unavailable' || 'deadline-exceeded' => '네트워크 상태를 확인해 주세요.',
+        _ => '심사용 로그인에 실패했어요.',
+      });
+    }
+
+    final customToken = (map['customToken'] as String?)?.trim() ?? '';
+    final uid = (map['uid'] as String?)?.trim() ?? '';
+    final nickname = (map['nickname'] as String?)?.trim() ?? '';
+    final cafeType = (map['cafeType'] as String?)?.trim() ?? '';
+    final experience = (map['experience'] as String?)?.trim() ?? '';
+    if (customToken.isEmpty ||
+        uid.isEmpty ||
+        nickname.isEmpty ||
+        cafeType.isEmpty ||
+        experience.isEmpty) {
+      throw const ReviewerLoginException('서버 응답이 올바르지 않아요.');
+    }
+
+    try {
+      final cred = await _auth.signInWithCustomToken(customToken);
+      final firebaseUid = cred.user?.uid ?? '';
+      if (firebaseUid != uid) {
+        await signOut();
+        throw const ReviewerLoginException('심사용 로그인에 실패했어요.');
+      }
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[FIREBASE_AUTH_BRIDGE] reviewerLogin=failed auth=${e.code}');
+      throw const ReviewerLoginException('심사용 로그인에 실패했어요.');
+    }
+
+    await AdminAccess.refreshAdminClaim(forceRefresh: true);
+    debugPrint('[FIREBASE_AUTH_BRIDGE] reviewerLogin=success uid=$uid');
+    return ReviewerLoginResult(
+      uid: uid,
+      nickname: nickname,
+      cafeType: cafeType,
+      experience: experience,
+    );
+  }
+
+  /// Firebase Auth uid persisted from a previous launch (waits for restore).
+  Future<String?> restoredUid() async {
+    try {
+      final user = await _auth
+          .authStateChanges()
+          .first
+          .timeout(const Duration(seconds: 3));
+      return user?.uid;
+    } catch (_) {
+      return _auth.currentUser?.uid;
+    }
+  }
+
   /// Best-effort Firebase Auth sign-out (does not throw).
   Future<void> signOut() async {
     try {
@@ -107,4 +187,27 @@ class FirebaseAuthBridge {
       debugPrint('[FIREBASE_AUTH_BRIDGE] firebaseAuthSignOut=failed error=$e');
     }
   }
+}
+
+class ReviewerLoginResult {
+  const ReviewerLoginResult({
+    required this.uid,
+    required this.nickname,
+    required this.cafeType,
+    required this.experience,
+  });
+
+  final String uid;
+  final String nickname;
+  final String cafeType;
+  final String experience;
+}
+
+class ReviewerLoginException implements Exception {
+  const ReviewerLoginException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }

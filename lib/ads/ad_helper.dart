@@ -2,8 +2,8 @@ import 'dart:io';
 
 /// AdMob unit IDs + factory ids.
 ///
-/// Currently Google official **test** IDs for device testing.
-/// Replace with real CAFEIN units before Play/App Store release.
+/// Android uses CAFEIN production App ID + ad units. iOS still uses Google
+/// test units / sample App ID until real iOS units are configured.
 ///
 /// See:
 /// - https://developers.google.com/admob/android/quick-start
@@ -11,19 +11,19 @@ import 'dart:io';
 class AdHelper {
   AdHelper._();
 
-  /// Google sample AdMob App ID (must match AndroidManifest / Info.plist).
-  static const androidAppId = 'ca-app-pub-3940256099942544~3347511713';
+  /// CAFEIN AdMob App ID (must match AndroidManifest APPLICATION_ID).
+  static const androidAppId = 'ca-app-pub-4352425125830619~5945651696';
   static const iosAppId = 'ca-app-pub-3940256099942544~1458002511';
 
   /// Must match [MainActivity.NATIVE_FACTORY_ID] on Android.
   static const nativeFactoryId = 'cafeinNative';
 
-  /// Banner — Google test unit.
-  static const _androidBannerId = 'ca-app-pub-3940256099942544/6300978111';
+  /// Banner — Android production / iOS Google test.
+  static const _androidBannerId = 'ca-app-pub-4352425125830619/3750733199';
   static const _iosBannerId = 'ca-app-pub-3940256099942544/2934735716';
 
-  /// Native Advanced — Google test unit.
-  static const _androidNativeId = 'ca-app-pub-3940256099942544/2247696110';
+  /// Native Advanced — Android production / iOS Google test.
+  static const _androidNativeId = 'ca-app-pub-4352425125830619/3932152865';
   static const _iosNativeId = 'ca-app-pub-3940256099942544/3986624511';
 
   static String get bannerAdUnitId {
@@ -42,5 +42,5 @@ class AdHelper {
   static const nativeAdInterval = 4;
 
   /// Bottom banner above [NavigationBar]. Set `true` to show again.
-  static const showBottomBannerAd = false;
+  static const showBottomBannerAd = true;
 }

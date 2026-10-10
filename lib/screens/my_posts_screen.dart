@@ -49,16 +49,15 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
   }
 
   void _onAuthChanged() {
-    final uid = AuthService.instance.kakaoUserId?.trim();
+    final uid = AuthService.instance.currentUserId;
     if (uid != _loadedForUid) {
       _load(forceRefresh: true);
     }
   }
 
   Future<void> _load({bool forceRefresh = false}) async {
-    final auth = AuthService.instance;
-    final uid = auth.kakaoUserId?.trim();
-    if (!auth.isLoggedIn || uid == null || uid.isEmpty) {
+    final uid = AuthService.instance.currentUserId;
+    if (uid == null) {
       if (!mounted) return;
       setState(() {
         _posts = const [];
@@ -112,17 +111,14 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final auth = AuthService.instance;
-    final uid = auth.kakaoUserId;
 
     return Scaffold(
       appBar: const CafeinBackAppBar(title: '내가 쓴 글'),
       body: ListenableBuilder(
         listenable: auth,
         builder: (context, _) {
-          final currentUid = auth.kakaoUserId ?? uid;
-          if (!auth.isLoggedIn ||
-              currentUid == null ||
-              currentUid.isEmpty) {
+          final currentUid = auth.currentUserId;
+          if (currentUid == null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(AppSpacing.screenH),
@@ -151,7 +147,8 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
             );
           }
 
-          if (_loading) {
+          // Previous user's list must never render for a newly signed-in user.
+          if (_loading || (_error == null && _loadedForUid != currentUid)) {
             return const Center(child: CircularProgressIndicator());
           }
 
@@ -201,27 +198,34 @@ class _MyPostsScreenState extends State<MyPostsScreen> {
               ),
               itemBuilder: (context, index) {
                 final post = _posts[index];
+                final mine = _postService.isMyPost(post.id, post: post);
                 return PostListItem(
                   post: post,
                   onTap: () => _openPost(post),
-                  onEdit: () async {
-                    _postService.upsertRemotePost(post);
-                    _postService.markAsMyPost(post.id);
-                    await Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            WritePostScreen(editPostId: post.id),
-                      ),
-                    );
-                    if (mounted) await _load(forceRefresh: true);
-                  },
-                  onDelete: () async {
-                    _postService.upsertRemotePost(post);
-                    final deleted =
-                        await PostMoreSheet.deleteWithConfirm(context, post);
-                    if (deleted && mounted) await _load(forceRefresh: true);
-                  },
-                  onEditPoll: post.poll == null
+                  onEdit: !mine
+                      ? null
+                      : () async {
+                          _postService.upsertRemotePost(post);
+                          _postService.markAsMyPost(post.id);
+                          await Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  WritePostScreen(editPostId: post.id),
+                            ),
+                          );
+                          if (mounted) await _load(forceRefresh: true);
+                        },
+                  onDelete: !mine
+                      ? null
+                      : () async {
+                          _postService.upsertRemotePost(post);
+                          final deleted = await PostMoreSheet
+                              .deleteWithConfirm(context, post);
+                          if (deleted && mounted) {
+                            await _load(forceRefresh: true);
+                          }
+                        },
+                  onEditPoll: !mine || post.poll == null
                       ? null
                       : () async {
                           _postService.upsertRemotePost(post);

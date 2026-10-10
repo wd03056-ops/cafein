@@ -1239,6 +1239,9 @@ class PostsFirestoreService {
     }
     final data = Map<String, dynamic>.from(snap.data()!);
     final current = Post.fromFirestore(snap.id, data);
+    if (!AuthService.instance.isCurrentUser(current.authorId)) {
+      throw StateError('본인 글만 수정할 수 있어요.');
+    }
 
     String? nextTopicId;
     String? nextTopicName;
@@ -1385,6 +1388,9 @@ class PostsFirestoreService {
     final data = snap.data();
     final topicId = (data?['topicId'] as String?)?.trim();
     final authorId = (data?['authorId'] as String?)?.trim();
+    if (!AuthService.instance.isCurrentUser(authorId)) {
+      throw StateError('본인 글만 삭제할 수 있어요.');
+    }
 
     await _deleteSubcollectionDocs(_commentsRef(postId));
     await _deleteSubcollectionDocs(_likesRef(postId));

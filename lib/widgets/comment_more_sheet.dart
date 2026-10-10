@@ -17,9 +17,8 @@ class CommentMoreSheet {
     VoidCallback? onDeleted,
   }) async {
     final colors = Theme.of(context).colorScheme;
-    final myId = AuthService.instance.kakaoUserId?.trim() ?? '';
     final authorId = comment.authorId?.trim() ?? '';
-    final mine = myId.isNotEmpty && authorId.isNotEmpty && myId == authorId;
+    final mine = AuthService.instance.isCurrentUser(authorId);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -103,6 +102,12 @@ class CommentMoreSheet {
       ),
     );
     if (ok != true || !context.mounted) return false;
+    if (!AuthService.instance.isCurrentUser(comment.authorId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('로그인 후 본인 댓글만 삭제할 수 있어요.')),
+      );
+      return false;
+    }
     try {
       await CommentsFirestoreService.instance.deleteComment(
         postId: comment.postId,

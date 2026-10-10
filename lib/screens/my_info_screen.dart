@@ -172,6 +172,9 @@ class _MyInfoScreenState extends State<MyInfoScreen> {
           }
 
           final remote = _remoteProfile;
+          if (remote == null && _profileLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final nickname = (auth.nickname?.trim().isNotEmpty == true)
               ? auth.nickname!.trim()
               : (remote?.nickname.trim().isNotEmpty == true

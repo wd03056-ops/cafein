@@ -13,49 +13,91 @@ import 'posts_firestore_service.dart';
 /// Home / search / topic feeds load from Firestore via
 /// [PostsFirestoreService]. This service no longer seeds mock posts.
 class PostService extends ChangeNotifier {
-  PostService._();
+  PostService._() {
+    _authUid = AuthService.instance.currentUserId;
+    AuthService.instance.addListener(_onAuthChanged);
+  }
 
   static final PostService instance = PostService._();
 
   final List<Post> _posts = [];
-  final Set<String> _myPostIds = {};
+
+  /// postId → uid that wrote it in this session (posts without authorId yet).
+  final Map<String, String> _sessionPostOwners = {};
+  final Map<String, String> _ownershipLogSignatures = {};
+  String? _authUid;
 
   List<Post> get posts => List.unmodifiable(_posts);
 
-  /// True if the signed-in Kakao user authored the post, or it was written
-  /// in this session (`_myPostIds`).
+  /// Login user changed (logout / account switch): drop per-user state and
+  /// rebuild listeners so 수정/삭제 menus are recomputed immediately.
+  void _onAuthChanged() {
+    final uid = AuthService.instance.currentUserId;
+    if (uid == _authUid) return;
+    _authUid = uid;
+    if (uid == null) {
+      _sessionPostOwners.clear();
+    } else {
+      _sessionPostOwners.removeWhere((_, owner) => owner != uid);
+    }
+    _ownershipLogSignatures.clear();
+    notifyListeners();
+  }
+
+  bool _isSessionPostOf(String postId, String? uid) =>
+      uid != null && _sessionPostOwners[postId] == uid;
+
+  /// Owner check shared by every feed / detail / sheet:
+  /// logged in && currentUserId != null && post.authorId == currentUserId.
   bool isMyPost(String postId, {Post? post}) {
-    if (_myPostIds.contains(postId)) return true;
-    final uid = AuthService.instance.kakaoUserId?.trim();
-    if (uid == null || uid.isEmpty) return false;
-    final resolved = post ?? getById(postId);
-    final authorId = resolved?.authorId?.trim();
-    return authorId != null && authorId.isNotEmpty && authorId == uid;
+    final auth = AuthService.instance;
+    final uid = auth.currentUserId;
+    final authorId = (post ?? getById(postId))?.authorId?.trim() ?? '';
+    final mine = uid != null &&
+        (authorId.isNotEmpty
+            ? auth.isCurrentUser(authorId)
+            : _isSessionPostOf(postId, uid));
+
+    if (kDebugMode) {
+      final signature = '$uid|$authorId|$mine';
+      if (_ownershipLogSignatures[postId] != signature) {
+        _ownershipLogSignatures[postId] = signature;
+        debugPrint(
+          '[OWNERSHIP] postId=$postId currentUserId=$uid '
+          'postAuthorId=$authorId isLoggedIn=${auth.isLoggedIn} '
+          'isMyPost=$mine',
+        );
+      }
+    }
+    return mine;
   }
 
   void markAsMyPost(String postId) {
-    if (postId.isEmpty) return;
-    _myPostIds.add(postId);
+    final uid = AuthService.instance.currentUserId;
+    if (postId.isEmpty || uid == null) return;
+    _sessionPostOwners[postId] = uid;
   }
 
   /// Posts authored by the current session user (tracked via write).
   List<Post> myPosts() {
+    final uid = AuthService.instance.currentUserId;
     return _posts
-        .where((p) => _myPostIds.contains(p.id))
+        .where((p) => _isSessionPostOf(p.id, uid))
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   List<Post> postsSorted(PostSort sort) {
     final list = List<Post>.from(_posts);
+    final uid = AuthService.instance.currentUserId;
     switch (sort) {
       case PostSort.all:
         list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       case PostSort.popular:
         list.sort((a, b) {
           // Testing: keep my posts visible near the top of popular.
-          final aMine = _myPostIds.contains(a.id);
-          final bMine = _myPostIds.contains(b.id);
+          final aMine = _isSessionPostOf(a.id, uid);
+          final bMine = _isSessionPostOf(b.id, uid);
           if (aMine != bMine) return aMine ? -1 : 1;
 
           final byLikes = b.likeCount.compareTo(a.likeCount);
@@ -302,6 +344,7 @@ class PostService extends ChangeNotifier {
     final list = _posts
         .where((p) => p.tags.any((t) => t == name))
         .toList();
+    final uid = AuthService.instance.currentUserId;
     switch (sort) {
       case PostSort.all:
       case PostSort.latest:
@@ -309,8 +352,8 @@ class PostService extends ChangeNotifier {
       case PostSort.popular:
         list.sort((a, b) {
           // Testing: keep my posts visible near the top of popular.
-          final aMine = _myPostIds.contains(a.id);
-          final bMine = _myPostIds.contains(b.id);
+          final aMine = _isSessionPostOf(a.id, uid);
+          final bMine = _isSessionPostOf(b.id, uid);
           if (aMine != bMine) return aMine ? -1 : 1;
 
           final byLikes = b.likeCount.compareTo(a.likeCount);
@@ -440,7 +483,7 @@ class PostService extends ChangeNotifier {
       cafeType: cafeType,
     );
     _posts.insert(0, post);
-    _myPostIds.add(post.id);
+    markAsMyPost(post.id);
     notifyListeners();
     return post;
   }
@@ -491,7 +534,8 @@ class PostService extends ChangeNotifier {
   bool deletePost(String postId) {
     final before = _posts.length;
     _posts.removeWhere((p) => p.id == postId);
-    _myPostIds.remove(postId);
+    _sessionPostOwners.remove(postId);
+    _ownershipLogSignatures.remove(postId);
     PostsFirestoreService.instance.invalidatePost(postId);
     if (_posts.length == before) return false;
     notifyListeners();
